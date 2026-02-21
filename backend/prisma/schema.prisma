@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String               @id @default(cuid())
+  phone          String               @unique
+  displayName    String
+  passwordHash   String
+  isActive       Boolean              @default(true)
+  lastSeen       DateTime             @default(now())
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  messages       Message[]
+  memberships    ConversationMember[]
+  refreshTokens  RefreshToken[]
+  contacts       UserContact[]        @relation("UserToContacts")
+  addedBy        UserContact[]        @relation("UserAsContact")
+  pushTokens     PushToken[]
+  blockedUsers   BlockedUser[]        @relation("BlockerToBlocked")
+  blockedBy      BlockedUser[]        @relation("BlockedToBlocker")
+  reactions      Reaction[]
+}
+
+model OtpVerification {
+  phone     String   @id
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model BlockedUser {
+  id          String   @id @default(cuid())
+  blockerId   String
+  blockedId   String
+  createdAt   DateTime @default(now())
+  blocker     User     @relation("BlockerToBlocked", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked     User     @relation("BlockedToBlocker", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserContact {
+  id        String   @id @default(cuid())
+  ownerId   String
+  contactId String
+  createdAt DateTime @default(now())
+  owner     User     @relation("UserToContacts", fields: [ownerId], references: [id], onDelete: Cascade)
+  contact   User     @relation("UserAsContact", fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, contactId])
+  @@index([ownerId])
+}
+
+model Conversation {
+  id             String               @id @default(cuid())
+  type           ConversationType     @default(DIRECT)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  members        ConversationMember[]
+  messages       Message[]
+
+  @@index([updatedAt])
+}
+
+model ConversationMember {
+  id               String         @id @default(cuid())
+  conversationId   String
+  userId           String
+  isMuted          Boolean        @default(false)
+  joinedAt         DateTime       @default(now())
+  conversation     Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id               String         @id @default(cuid())
+  conversationId   String
+  senderId         String
+  parentId         String?
+  content          String
+  status           MessageStatus  @default(SENT)
+  isDeleted        Boolean        @default(false)
+  isEdited         Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  conversation     Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender           User           @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  parent           Message?       @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies          Message[]      @relation("Replies")
+  reactions        Reaction[]
+
+  @@index([conversationId, createdAt])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  familyId    String?
+  isUsed      Boolean  @default(false)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+}
+
+enum ConversationType {
+  DIRECT
+}

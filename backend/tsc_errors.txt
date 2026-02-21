@@ -1,0 +1,57 @@
+src/config/logger.ts(4,28): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(optionsOrStream?: DestinationStream | LoggerOptions<never, boolean> | undefined): Logger<never, boolean>', gave the following error.
+    Argument of type '{ level: "debug" | "info"; transport: { target: string; options: { colorize: boolean; }; } | undefined; }' is not assignable to parameter of type 'DestinationStream | LoggerOptions<never, boolean> | undefined'.
+      Type '{ level: "debug" | "info"; transport: { target: string; options: { colorize: boolean; }; } | undefined; }' is not assignable to type 'LoggerOptions<never, boolean>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+        Types of property 'transport' are incompatible.
+          Type '{ target: string; options: { colorize: boolean; }; } | undefined' is not assignable to type 'TransportSingleOptions<Record<string, any>> | TransportMultiOptions<Record<string, any>> | TransportPipelineOptions<Record<string, any>>'.
+            Type 'undefined' is not assignable to type 'TransportSingleOptions<Record<string, any>> | TransportMultiOptions<Record<string, any>> | TransportPipelineOptions<Record<string, any>>'.
+  Overload 2 of 2, '(options: LoggerOptions<never, boolean>, stream?: DestinationStream | undefined): Logger<never, boolean>', gave the following error.
+    Argument of type '{ level: "debug" | "info"; transport: { target: string; options: { colorize: boolean; }; } | undefined; }' is not assignable to parameter of type 'LoggerOptions<never, boolean>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+      Types of property 'transport' are incompatible.
+        Type '{ target: string; options: { colorize: boolean; }; } | undefined' is not assignable to type 'TransportSingleOptions<Record<string, any>> | TransportMultiOptions<Record<string, any>> | TransportPipelineOptions<Record<string, any>>'.
+          Type 'undefined' is not assignable to type 'TransportSingleOptions<Record<string, any>> | TransportMultiOptions<Record<string, any>> | TransportPipelineOptions<Record<string, any>>'.
+src/modules/auth/auth.service.ts(23,14): error TS2769: No overload matches this call.
+  Overload 1 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: null, options?: (SignOptions & { algorithm: "none"; }) | undefined): string', gave the following error.
+    Argument of type 'Secret' is not assignable to parameter of type 'null'.
+      Type 'string' is not assignable to type 'null'.
+  Overload 2 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | PrivateKeyInput | JsonWebKeyInput, options?: SignOptions | undefined): string', gave the following error.
+    Argument of type '{ expiresIn: number | ms.StringValue | undefined; }' is not assignable to parameter of type 'SignOptions' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+      Types of property 'expiresIn' are incompatible.
+        Type 'number | StringValue | undefined' is not assignable to type 'number | StringValue'.
+          Type 'undefined' is not assignable to type 'number | StringValue'.
+  Overload 3 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | PrivateKeyInput | JsonWebKeyInput, callback: SignCallback): void', gave the following error.
+    Object literal may only specify known properties, and 'expiresIn' does not exist in type 'SignCallback'.
+src/modules/auth/auth.service.ts(46,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number | StringValue | undefined'.
+src/modules/auth/auth.service.ts(51,5): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number | StringValue | undefined'.
+src/modules/conversations/conversations.controller.ts(17,22): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/conversations/conversations.controller.ts(23,22): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/keys/keys.controller.ts(11,40): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/messages/messages.controller.ts(8,5): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/messages/messages.controller.ts(19,29): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/messages/messages.service.ts(51,50): error TS2379: Argument of type '{ where: { conversationId: string; }; take: number; skip: number; cursor: { id: string; } | undefined; orderBy: { createdAt: "desc"; }; select: { readonly id: true; readonly content: true; readonly createdAt: true; ... 8 more ...; readonly reactions: { ...; }; }; }' is not assignable to parameter of type '{ select?: MessageSelect<DefaultArgs> | null; omit?: MessageOmit<DefaultArgs> | null; include?: MessageInclude<DefaultArgs> | null; ... 5 more ...; distinct?: MessageScalarFieldEnum | MessageScalarFieldEnum[]; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'cursor' are incompatible.
+    Type '{ id: string; } | undefined' is not assignable to type 'MessageWhereUniqueInput'.
+      Type 'undefined' is not assignable to type 'MessageWhereUniqueInput'.
+src/modules/messages/messages.service.ts(60,50): error TS2532: Object is possibly 'undefined'.
+src/modules/messages/messages.service.ts(108,5): error TS2375: Type '{ conversationId: string; senderId: string; content: string; parentId: string | undefined; status: "SENT"; }' is not assignable to type '(Without<MessageCreateInput, MessageUncheckedCreateInput> & MessageUncheckedCreateInput) | (Without<...> & MessageCreateInput)' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Type '{ conversationId: string; senderId: string; content: string; parentId: string | undefined; status: "SENT"; }' is not assignable to type 'Without<MessageCreateInput, MessageUncheckedCreateInput> & MessageUncheckedCreateInput' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+    Type '{ conversationId: string; senderId: string; content: string; parentId: string | undefined; status: "SENT"; }' is not assignable to type 'MessageUncheckedCreateInput' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+      Types of property 'parentId' are incompatible.
+        Type 'string | undefined' is not assignable to type 'string | null'.
+          Type 'undefined' is not assignable to type 'string | null'.
+src/modules/messages/messages.service.ts(125,22): error TS2551: Property 'sender' does not exist on type '{ status: MessageStatus; id: string; createdAt: Date; conversationId: string; senderId: string; parentId: string | null; content: string; isDeleted: boolean; isEdited: boolean; }'. Did you mean 'senderId'?
+src/modules/notifications/notification.service.ts(72,33): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/socket/socket.ts(155,46): error TS2379: Argument of type '{ conversationId: string; senderId: string; content: string; parentId: string | undefined; }' is not assignable to parameter of type '{ conversationId: string; senderId: string; content: string; parentId?: string; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'parentId' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+src/modules/users/users.controller.ts(39,39): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/modules/users/users.controller.ts(45,41): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.

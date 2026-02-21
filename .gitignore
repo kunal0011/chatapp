@@ -1,0 +1,85 @@
+# =========================
+# Root & OS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+*.bak
+*.swp
+*~
+*.tmp
+
+# =========================
+# Secrets & Environment
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+# Android Keystores & Secrets
+*.jks
+*.keystore
+keystore.properties
+key.properties
+google-services.json
+
+# =========================
+# Node.js (Backend)
+# =========================
+backend/node_modules/
+backend/dist/
+backend/build/
+backend/coverage/
+backend/.nyc_output/
+backend/.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+# Prisma local DB
+backend/prisma/*.db
+backend/prisma/*.db-journal
+
+# =========================
+# Android (Frontend)
+# =========================
+# Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+
+# Build outputs
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+android/bin/
+android/gen/
+android/out/
+
+# NDK
+android/obj/
+
+# =========================
+# IDEs & Tools
+# =========================
+.vscode/
+.idea/
+android/.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sqllite
