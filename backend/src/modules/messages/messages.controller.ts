@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { listConversationMessages, softDeleteMessage, searchMessages } from './messages.service.js';
+import { listConversationMessages, softDeleteMessage, searchMessages, getMessageInfo } from './messages.service.js';
 import { toggleMute } from '../conversations/conversations.service.js';
 import { AppError } from '../../common/errors/app-error.js';
 
@@ -19,6 +19,12 @@ export async function deleteMessage(req: Request, res: Response) {
     const { id } = req.params;
     await softDeleteMessage(id, req.auth!.userId);
     res.status(StatusCodes.OK).json({ message: 'Message deleted' });
+}
+
+export async function getMessageDetails(req: Request, res: Response) {
+  const { id } = req.params;
+  const info = await getMessageInfo(id, req.auth!.userId);
+  res.status(StatusCodes.OK).json({ info });
 }
 
 export async function search(req: Request, res: Response) {

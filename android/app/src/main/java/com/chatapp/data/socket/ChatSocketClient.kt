@@ -36,6 +36,14 @@ data class MessageAckEvent(
     @SerializedName("status") val status: String
 )
 
+data class SocketStatusUpdateEvent(
+    @SerializedName("conversationId") val conversationId: String,
+    @SerializedName("userId") val userId: String,
+    @SerializedName("lastReadMessageId") val lastReadMessageId: String?,
+    @SerializedName("lastReadMessageTime") val lastReadMessageTime: String?,
+    @SerializedName("status") val status: String
+)
+
 @Singleton
 class ChatSocketClient @Inject constructor(
     private val gson: Gson
@@ -45,6 +53,7 @@ class ChatSocketClient @Inject constructor(
     private val messageEvents = MutableSharedFlow<ApiMessage>(extraBufferCapacity = 64)
     private val ackEvents = MutableSharedFlow<MessageAckEvent>(extraBufferCapacity = 32)
     private val readEvents = MutableSharedFlow<SocketReadEvent>(extraBufferCapacity = 32)
+    private val statusUpdateEvents = MutableSharedFlow<SocketStatusUpdateEvent>(extraBufferCapacity = 32)
     private val typingEvents = MutableSharedFlow<SocketTypingEvent>(extraBufferCapacity = 32)
     private val connectionState = MutableStateFlow(false)
 
@@ -108,6 +117,15 @@ class ChatSocketClient @Inject constructor(
             created.on("message:update") { args ->
                 if (args.isNotEmpty()) {
                     parseIncomingMessage(args[0])?.let { messageEvents.tryEmit(it) }
+                }
+            }
+
+            created.on("message:status_update") { args ->
+                if (args.isNotEmpty()) {
+                    runCatching {
+                        val event = gson.fromJson(args[0].toString(), SocketStatusUpdateEvent::class.java)
+                        statusUpdateEvents.tryEmit(event)
+                    }
                 }
             }
 
@@ -186,6 +204,7 @@ class ChatSocketClient @Inject constructor(
     fun observeMessages(): Flow<ApiMessage> = messageEvents.asSharedFlow()
     fun observeAcks(): Flow<MessageAckEvent> = ackEvents.asSharedFlow()
     fun observeReadEvents(): Flow<SocketReadEvent> = readEvents.asSharedFlow()
+    fun observeStatusUpdates(): Flow<SocketStatusUpdateEvent> = statusUpdateEvents.asSharedFlow()
     fun observeTypingEvents(): Flow<SocketTypingEvent> = typingEvents.asSharedFlow()
     fun observeConnection(): StateFlow<Boolean> = connectionState
 

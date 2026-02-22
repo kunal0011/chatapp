@@ -12,7 +12,7 @@ import com.chatapp.data.local.entities.UserEntity
 
 @Database(
     entities = [UserEntity::class, ConversationEntity::class, MessageEntity::class, MemberEntity::class],
-    version = 8, // Added creatorId
+    version = 13, // Added otherMemberId partitioning
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {

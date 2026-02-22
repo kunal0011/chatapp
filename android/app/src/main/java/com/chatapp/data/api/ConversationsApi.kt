@@ -6,6 +6,7 @@ import com.chatapp.data.dto.ConversationsResponseEnvelope
 import com.chatapp.data.dto.DirectConversationRequest
 import com.chatapp.data.dto.GroupConversationRequest
 import com.chatapp.data.dto.MembersResponse
+import com.chatapp.data.dto.MessageInfoResponse
 import com.chatapp.data.dto.MessagesResponse
 import com.chatapp.data.dto.UnifiedSearchResponse
 import com.chatapp.data.dto.UpdateGroupRequest
@@ -55,9 +56,13 @@ interface ConversationsApi {
     @POST("messages/conversations/{conversationId}/unmute")
     suspend fun unmuteConversation(@Path("conversationId") conversationId: String): Unit
 
-    @DELETE("messages/{messageId}")
-    suspend fun deleteMessage(@Path("messageId") messageId: String): Unit
-
-    @GET("messages/search")
+        @DELETE("messages/{messageId}")
+        suspend fun deleteMessage(@Path("messageId") messageId: String): Unit
+    
+        @GET("messages/{id}/info")
+        suspend fun getMessageInfo(@Path("id") id: String): MessageInfoResponse
+        
+        @GET("messages/search")
+    
     suspend fun searchMessages(@Query("q") query: String): UnifiedSearchResponse
 }

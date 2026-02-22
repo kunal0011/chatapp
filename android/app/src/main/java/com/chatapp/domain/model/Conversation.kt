@@ -11,6 +11,7 @@ data class Conversation(
     val avatarUrl: String? = null,
     val description: String? = null,
     val creatorId: String? = null,
+    val otherMemberId: String? = null,
     val memberCount: Int = 0,
     val isMember: Boolean = true,
     val lastMessage: String? = null,

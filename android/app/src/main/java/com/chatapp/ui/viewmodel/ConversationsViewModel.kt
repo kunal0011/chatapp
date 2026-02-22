@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chatapp.domain.model.ChatMessage
 import com.chatapp.domain.model.Conversation
+import com.chatapp.domain.model.SearchResults
 import com.chatapp.domain.repository.ChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,14 +21,15 @@ data class ConversationsUiState(
     val loading: Boolean = true,
     val conversations: List<Conversation> = emptyList(),
     val searchQuery: String = "",
-    val searchResults: com.chatapp.domain.model.SearchResults = com.chatapp.domain.model.SearchResults(),
+    val searchResults: SearchResults = SearchResults(),
     val isSearching: Boolean = false,
     val error: String? = null
 )
 
 @HiltViewModel
 class ConversationsViewModel @Inject constructor(
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val contactsRepository: com.chatapp.domain.repository.ContactsRepository
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConversationsUiState())
     val state: StateFlow<ConversationsUiState> = _state.asStateFlow()
@@ -66,7 +68,7 @@ class ConversationsViewModel @Inject constructor(
         if (query.length >= 2) {
             performSearch(query)
         } else {
-            _state.value = _state.value.copy(searchResults = com.chatapp.domain.model.SearchResults(), isSearching = false)
+            _state.value = _state.value.copy(searchResults = SearchResults(), isSearching = false)
         }
     }
 
@@ -114,16 +116,24 @@ class ConversationsViewModel @Inject constructor(
 
     fun onContactSearchResultClick(user: com.chatapp.domain.model.User) {
         viewModelScope.launch {
-            // Check if we already have a conversation with this user
-            // If not, we start a new direct one
-            // This is a common pattern: Clicking a search result user starts/opens chat.
-            _navigateToChat.emit(
-                NavigateToChat(
-                    conversationId = "", // The repository/controller will handle "start or get" logic
-                    contactName = user.displayName,
-                    otherUserId = user.id
+            _state.value = _state.value.copy(loading = true)
+            runCatching {
+                contactsRepository.startDirectConversation(user.id)
+            }.onSuccess { conversation ->
+                _state.value = _state.value.copy(loading = false)
+                _navigateToChat.emit(
+                    NavigateToChat(
+                        conversationId = conversation.id,
+                        contactName = user.displayName
+                    )
                 )
-            )
+            }.onFailure { t ->
+                _state.value = _state.value.copy(loading = false, error = t.message)
+            }
         }
+    }
+
+    fun onContactAvatarClick(conversation: Conversation, onNavigate: (String) -> Unit) {
+        conversation.otherMemberId?.let { onNavigate(it) }
     }
 }

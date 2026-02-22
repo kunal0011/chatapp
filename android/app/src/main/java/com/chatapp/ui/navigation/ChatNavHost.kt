@@ -25,6 +25,7 @@ import com.chatapp.ui.screens.chat.ChatScreen
 import com.chatapp.ui.screens.chat.ConversationsScreen
 import com.chatapp.ui.screens.chat.CreateGroupScreen
 import com.chatapp.ui.screens.chat.GroupInfoScreen
+import com.chatapp.ui.screens.chat.MessageInfoScreen
 import com.chatapp.ui.screens.contacts.ContactInfoScreen
 import com.chatapp.ui.screens.contacts.DirectoryScreen
 import com.chatapp.ui.screens.settings.SettingsScreen
@@ -83,6 +84,12 @@ fun ChatNavHost() {
                 onNavigateToCreateGroup = {
                     navController.navigate(Routes.CREATE_GROUP)
                 },
+                onNavigateToGroupInfo = { conversationId ->
+                    navController.navigate(Routes.groupInfoDestination(conversationId))
+                },
+                onNavigateToContactInfo = { userId ->
+                    navController.navigate(Routes.contactInfoDestination(userId))
+                },
                 onLogout = appViewModel::logout
             )
         }
@@ -132,7 +139,21 @@ fun ChatNavHost() {
                 },
                 onNavigateToContactInfo = { userId ->
                     navController.navigate(Routes.contactInfoDestination(userId))
+                },
+                onNavigateToMessageInfo = { messageId ->
+                    navController.navigate(Routes.messageInfoDestination(messageId))
                 }
+            )
+        }
+
+        composable(
+            route = Routes.MESSAGE_INFO,
+            arguments = listOf(
+                navArgument("messageId") { type = NavType.StringType }
+            )
+        ) {
+            MessageInfoScreen(
+                onBack = { navController.popBackStack() }
             )
         }
 

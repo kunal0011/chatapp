@@ -57,17 +57,24 @@ data class ApiConversation(
 data class ApiConversationMember(
     @SerializedName("user") val user: ApiUser,
     @SerializedName("role") val role: String,
-    @SerializedName("isMuted") val isMuted: Boolean = false
+    @SerializedName("isMuted") val isMuted: Boolean = false,
+    @SerializedName("lastReadMessageId") val lastReadMessageId: String? = null,
+    @SerializedName("lastReadMessage") val lastReadMessage: ApiWatermarkMessage? = null
+)
+
+data class ApiWatermarkMessage(
+    @SerializedName("createdAt") val createdAt: String
 )
 
 fun ApiConversation.toDomain(currentUserId: String): Conversation {
     val lastMsg = messages?.firstOrNull()
     val me = members?.find { it.user.id == currentUserId }
-
+    val otherMember = members?.find { it.user.id != currentUserId }
+    
     val displayName = if (type == "GROUP") {
         name ?: "Group Chat"
     } else {
-        members?.find { it.user.id != currentUserId }?.user?.displayName ?: "Unknown"
+        otherMember?.user?.displayName ?: "Unknown"
     }
 
     val conversationType = when (type) {
@@ -88,7 +95,9 @@ fun ApiConversation.toDomain(currentUserId: String): Conversation {
         avatarUrl = avatarUrl,
         description = description,
         creatorId = creatorId,
+        otherMemberId = if (type == "DIRECT") otherMember?.user?.id else null,
         memberCount = members?.size ?: 0,
+
         isMember = me != null || (type == "GROUP" && members == null), // Fallback if members list is omitted
         lastMessage = lastMsg?.content,
         lastMessageTime = lastMsgTime,

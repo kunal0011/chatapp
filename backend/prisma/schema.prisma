@@ -84,16 +84,18 @@ model Conversation {
 }
 
 model ConversationMember {
-  id                String         @id @default(cuid())
-  conversationId    String
-  userId            String
-  role              MemberRole     @default(MEMBER)
-  isMuted           Boolean        @default(false)
-  lastReadMessageId String?
-  joinedAt          DateTime       @default(now())
-  conversation      Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastReadMessage   Message?       @relation("LastRead", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+  id                    String         @id @default(cuid())
+  conversationId        String
+  userId                String
+  role                  MemberRole     @default(MEMBER)
+  isMuted               Boolean        @default(false)
+  lastReadMessageId     String?
+  lastDeliveredMessageId String?
+  joinedAt              DateTime       @default(now())
+  conversation          Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage       Message?       @relation("LastRead", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+  lastDeliveredMessage  Message?       @relation("LastDelivered", fields: [lastDeliveredMessageId], references: [id], onDelete: SetNull)
 
   @@unique([conversationId, userId])
   @@index([userId])
@@ -116,6 +118,7 @@ model Message {
   replies          Message[]      @relation("Replies")
   reactions        Reaction[]
   readByMembers    ConversationMember[] @relation("LastRead")
+  deliveredToMembers ConversationMember[] @relation("LastDelivered")
 
   @@index([conversationId, createdAt])
 }

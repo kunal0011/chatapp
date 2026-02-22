@@ -151,7 +151,17 @@ export function registerSocketServer(httpServer: HttpServer) {
 
     socket.on('message:read', async (payload: MessageReadPayload) => {
         try {
-            await markConversationAsRead(payload.conversationId, userId);
+            const lastReadMessage = await markConversationAsRead(payload.conversationId, userId);
+            
+            // Broadcast that this user has advanced their read watermark
+            io.to(payload.conversationId).emit('message:status_update', {
+                conversationId: payload.conversationId,
+                userId: userId,
+                lastReadMessageId: lastReadMessage?.id,
+                lastReadMessageTime: lastReadMessage?.createdAt,
+                status: 'READ'
+            });
+
             socket.to(payload.conversationId).emit('conversation:read', {
                 conversationId: payload.conversationId,
                 readerId: userId

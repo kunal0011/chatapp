@@ -318,6 +318,10 @@ export async function listUserConversations(userId: string) {
         select: {
           role: true,
           isMuted: true,
+          lastReadMessageId: true,
+          lastReadMessage: {
+            select: { createdAt: true }
+          },
           user: {
             select: {
               id: true,

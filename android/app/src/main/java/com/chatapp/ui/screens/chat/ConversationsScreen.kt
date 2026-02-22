@@ -73,6 +73,8 @@ fun ConversationsScreen(
     onNavigateToDirectory: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToCreateGroup: () -> Unit,
+    onNavigateToGroupInfo: (String) -> Unit,
+    onNavigateToContactInfo: (String) -> Unit,
     onLogout: () -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel()
 ) {
@@ -104,8 +106,8 @@ fun ConversationsScreen(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "NEXUS", 
-                            style = MaterialTheme.typography.headlineLarge, 
+                            text = "NEXUS",
+                            style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary,
                             letterSpacing = 4.sp
@@ -224,7 +226,11 @@ fun ConversationsScreen(
                                 )
                             }
                             items(state.searchResults.contacts, key = { "c_${it.id}" }) { user ->
-                                ContactSearchResultCard(user, onClick = { viewModel.onContactSearchResultClick(user) })
+                                ContactSearchResultCard(
+                                    user = user,
+                                    onClick = { viewModel.onContactSearchResultClick(user) },
+                                    onAvatarClick = { onNavigateToContactInfo(user.id) }
+                                )
                             }
                         }
 
@@ -241,7 +247,8 @@ fun ConversationsScreen(
                                 ConversationCard(
                                     conversation = group,
                                     onClick = { viewModel.onConversationClick(group) },
-                                    onMuteToggle = { viewModel.toggleMute(group) }
+                                    onMuteToggle = { viewModel.toggleMute(group) },
+                                    onAvatarClick = { onNavigateToGroupInfo(group.id) }
                                 )
                             }
                         }
@@ -274,7 +281,16 @@ fun ConversationsScreen(
                             ConversationCard(
                                 conversation = conversation,
                                 onClick = { viewModel.onConversationClick(conversation) },
-                                onMuteToggle = { viewModel.toggleMute(conversation) }
+                                onMuteToggle = { viewModel.toggleMute(conversation) },
+                                onAvatarClick = {
+                                    if (conversation.type == com.chatapp.domain.model.ConversationType.GROUP) {
+                                        onNavigateToGroupInfo(conversation.id)
+                                    } else {
+                                        // Since we don't have the other person's ID directly in the Conversation object yet,
+                                        // we'll fetch it from the member list.
+                                        viewModel.onContactAvatarClick(conversation, onNavigateToContactInfo)
+                                    }
+                                }
                             )
                         }
                     }
@@ -293,7 +309,11 @@ fun ConversationsScreen(
 }
 
 @Composable
-private fun ContactSearchResultCard(user: com.chatapp.domain.model.User, onClick: () -> Unit) {
+private fun ContactSearchResultCard(
+    user: com.chatapp.domain.model.User,
+    onClick: () -> Unit,
+    onAvatarClick: () -> Unit
+) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -304,7 +324,11 @@ private fun ContactSearchResultCard(user: com.chatapp.domain.model.User, onClick
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    .clickable { onAvatarClick() },
                 contentAlignment = Alignment.Center
             ) {
                 Text(user.displayName.take(1).uppercase(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
@@ -336,7 +360,8 @@ private fun SearchResultCard(message: ChatMessage, onClick: () -> Unit) {
 private fun ConversationCard(
     conversation: Conversation,
     onClick: () -> Unit,
-    onMuteToggle: () -> Unit
+    onMuteToggle: () -> Unit,
+    onAvatarClick: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -359,7 +384,8 @@ private fun ConversationCard(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    .clickable { onAvatarClick() },
                 contentAlignment = Alignment.Center
             ) {
                 if (conversation.type == com.chatapp.domain.model.ConversationType.GROUP) {

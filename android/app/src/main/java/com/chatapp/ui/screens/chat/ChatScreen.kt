@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.MoreVert
@@ -75,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,10 +84,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.chatapp.domain.model.ChatMessage
-import com.chatapp.domain.model.MessageStatus
 import com.chatapp.ui.viewmodel.ChatViewModel
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -107,6 +105,7 @@ fun ChatScreen(
     onBack: () -> Unit,
     onNavigateToGroupInfo: (String) -> Unit,
     onNavigateToContactInfo: (String) -> Unit,
+    onNavigateToMessageInfo: (String) -> Unit,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -131,126 +130,142 @@ fun ChatScreen(
     }
 
     LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) {
+        if (state.messages.isNotEmpty() && state.selectedMessageId == null) {
             listState.animateScrollToItem(state.messages.lastIndex)
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (state.isGroup) {
-                                    onNavigateToGroupInfo(state.conversationId)
-                                } else {
-                                    state.otherUserId?.let { onNavigateToContactInfo(it) }
-                                }
-                            }
-                    ) {
-                        Text(text = state.contactName, style = MaterialTheme.typography.titleMedium)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (state.isOtherTyping) {
-                                Text(
-                                    text = "typing...",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontStyle = FontStyle.Italic
-                                )
-                            } else {
-                                if (state.isGroup) {
-                                    Text(
-                                        text = "${state.memberCount} members",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                    )
-                                } else if (state.isConnected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(
-                                                color = MaterialTheme.colorScheme.primary,
-                                                shape = CircleShape
-                                            )
-                                    )
-                                    Text(
-                                        text = "Online",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                                    )
-                                } else {
-                                    Text(
-                                        text = formatLastSeen(state.messages.firstOrNull()?.createdAt ?: Instant.now()),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                    )
-                                }
-                            }
+            if (state.selectedMessageId != null) {
+                TopAppBar(
+                    title = { Text("1 selected") },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::clearSelection) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
-                        IconButton(onClick = { showChatMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            onNavigateToMessageInfo(state.selectedMessageId!!)
+                            viewModel.clearSelection()
+                        }) {
+                            Icon(Icons.Default.Info, contentDescription = "Message Info")
                         }
-                        DropdownMenu(
-                            expanded = showChatMenu,
-                            onDismissRequest = { showChatMenu = false },
-                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
-                        ) {
-                            if (state.isGroup) {
-                                DropdownMenuItem(
-                                    text = { Text("Group Info") },
-                                    onClick = {
-                                        showChatMenu = false
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (state.isGroup) {
                                         onNavigateToGroupInfo(state.conversationId)
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Leave Group") },
-                                    onClick = {
-                                        showChatMenu = false
-                                        onNavigateToGroupInfo(state.conversationId)
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.ExitToApp, contentDescription = null) }
-                                )
-                            } else {
-                                DropdownMenuItem(
-                                    text = { Text("Contact Info") },
-                                    onClick = {
-                                        showChatMenu = false
+                                    } else {
                                         state.otherUserId?.let { onNavigateToContactInfo(it) }
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Block User") },
-                                    onClick = {
-                                        showChatMenu = false
-                                        viewModel.blockUser()
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
-                                )
+                                    }
+                                }
+                        ) {
+                            Text(text = state.contactName, style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (state.isOtherTyping) {
+                                    Text(
+                                        text = "typing...",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontStyle = FontStyle.Italic
+                                    )
+                                } else {
+                                    if (state.isGroup) {
+                                        Text(
+                                            text = "${state.memberCount} members",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    } else if (state.isConnected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    shape = CircleShape
+                                                )
+                                        )
+                                        Text(
+                                            text = "Online",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = formatLastSeen(state.messages.firstOrNull()?.createdAt ?: Instant.now()),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
                             }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                windowInsets = WindowInsets.safeDrawing
-            )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
+                            IconButton(onClick = { showChatMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                            }
+                            DropdownMenu(
+                                expanded = showChatMenu,
+                                onDismissRequest = { showChatMenu = false },
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            ) {
+                                if (state.isGroup) {
+                                                                    DropdownMenuItem(
+                                                                        text = { Text("Group Info") },
+                                                                        onClick = {
+                                                                            showChatMenu = false
+                                                                            onNavigateToGroupInfo(state.conversationId)
+                                                                        },
+                                                                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) }
+                                                                    )
+                                                                } else {
+
+                                    DropdownMenuItem(
+                                        text = { Text("Contact Info") },
+                                        onClick = {
+                                            showChatMenu = false
+                                            state.otherUserId?.let { onNavigateToContactInfo(it) }
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Block User") },
+                                        onClick = {
+                                            showChatMenu = false
+                                            viewModel.blockUser()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error) }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    windowInsets = WindowInsets.safeDrawing
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
@@ -290,15 +305,49 @@ fun ChatScreen(
 
                     itemsIndexed(state.messages, key = { _, it -> it.id }) { index, message ->
                         if (message.type == com.chatapp.domain.model.MessageType.SYSTEM) {
-                            SystemMessageBubble(message.content)
+                            SystemMessageBubble(content = message.content)
                         } else {
                             val isMine = message.senderId == state.currentUserId
+
+                            // Calculate aggregate status for group chats
+                            val displayStatus = if (state.isGroup && isMine) {
+                                val otherMembers = state.members.filter { it.userId != state.currentUserId }
+
+                                // Need to know about at least one other member to show aggregate status
+                                if (otherMembers.isEmpty()) {
+                                    message.status
+                                } else {
+                                    val readCount = otherMembers.count { m ->
+                                        m.lastReadTime != null && m.lastReadTime >= message.createdAt
+                                    }
+
+                                    val deliveredCount = otherMembers.count { m ->
+                                        (m.lastReadTime != null && m.lastReadTime >= message.createdAt) ||
+                                        (m.lastDeliveredTime != null && m.lastDeliveredTime >= message.createdAt)
+                                    }
+
+                                    val isFullyRead = readCount >= (state.memberCount - 1) && readCount > 0
+                                    val isAnyDelivered = deliveredCount > 0 || message.status != com.chatapp.domain.model.MessageStatus.SENT
+
+                                    when {
+                                        isFullyRead -> com.chatapp.domain.model.MessageStatus.READ
+                                        isAnyDelivered -> com.chatapp.domain.model.MessageStatus.DELIVERED
+                                        else -> com.chatapp.domain.model.MessageStatus.SENT
+                                    }
+                                }
+                            } else {
+                                message.status
+                            }
+
                             MessageBubble(
                                 message = message,
                                 isMine = isMine,
+                                status = displayStatus,
+                                selected = state.selectedMessageId == message.id,
                                 onDelete = { viewModel.unsendMessage(message.id) },
                                 onReply = { viewModel.onReplyClick(message) },
                                 onEdit = { viewModel.onEditClick(message) },
+                                onLongClick = { viewModel.selectMessage(message.id) },
                                 onReaction = { emoji -> viewModel.sendReaction(message.id, emoji) },
                                 onQuoteClick = { parentId ->
                                     val parentIndex = state.messages.indexOfFirst { it.id == parentId }
@@ -513,16 +562,21 @@ private fun SystemMessageBubble(content: String) {
 private fun MessageBubble(
     message: ChatMessage,
     isMine: Boolean,
+    status: com.chatapp.domain.model.MessageStatus,
+    selected: Boolean = false,
     onDelete: () -> Unit,
     onReply: () -> Unit,
     onEdit: () -> Unit,
+    onLongClick: () -> Unit,
     onReaction: (String) -> Unit,
     onQuoteClick: (String) -> Unit
 ) {
     var showOptions by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent),
         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
     ) {
         Box {
@@ -537,8 +591,13 @@ private fun MessageBubble(
                 modifier = Modifier
                     .fillMaxWidth(0.85f)
                     .combinedClickable(
-                        onClick = {},
-                        onLongClick = { if (!message.isDeleted) showOptions = true }
+                        onClick = { if (selected) onLongClick() },
+                        onLongClick = {
+                            if (!message.isDeleted) {
+                                onLongClick()
+                                showOptions = true
+                            }
+                        }
                     )
             ) {
                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -610,12 +669,12 @@ private fun MessageBubble(
                         )
 
                         if (isMine && !message.isDeleted) {
-                            val statusIcon = when (message.status) {
-                                MessageStatus.SENT -> Icons.Default.Done
+                            val statusIcon = when (status) {
+                                com.chatapp.domain.model.MessageStatus.SENT -> Icons.Default.Done
                                 else -> Icons.Default.DoneAll
                             }
-                            val statusColor = when (message.status) {
-                                MessageStatus.READ -> Color(0xFF00B0FF)
+                            val statusColor = when (status) {
+                                com.chatapp.domain.model.MessageStatus.READ -> Color(0xFF00B0FF)
                                 else -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
                             }
                             Icon(imageVector = statusIcon, contentDescription = null, modifier = Modifier.size(14.dp), tint = statusColor)

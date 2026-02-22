@@ -17,6 +17,16 @@ data class UnifiedSearchResponse(
     @SerializedName("groups") val groups: List<ApiConversation>
 )
 
+data class MessageInfoResponse(
+    @SerializedName("info") val info: List<ApiMessageStatus>
+)
+
+data class ApiMessageStatus(
+    @SerializedName("user") val user: ApiUser,
+    @SerializedName("status") val status: String,
+    @SerializedName("timestamp") val timestamp: String?
+)
+
 data class ApiMessage(
     @SerializedName("id") val id: String,
     @SerializedName("conversationId") val conversationId: String,

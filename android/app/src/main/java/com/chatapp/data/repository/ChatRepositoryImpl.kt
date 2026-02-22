@@ -14,8 +14,12 @@ import com.chatapp.data.socket.ChatSocketClient
 import com.chatapp.data.store.SessionStore
 import com.chatapp.domain.model.ChatMessage
 import com.chatapp.domain.model.Conversation
+import com.chatapp.domain.model.GroupMember
+import com.chatapp.domain.model.MessageRecipientStatus
 import com.chatapp.domain.model.MessageStatus
+import com.chatapp.domain.model.SearchResults
 import com.chatapp.domain.repository.ChatRepository
+import com.chatapp.domain.repository.StatusUpdate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -24,12 +28,14 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.chatapp.data.dto.toDomain as toDomainDto
 import com.chatapp.data.dto.toDomain as toDomainUser
 import com.chatapp.data.local.entities.toDomain as toDomainEntity
+import com.chatapp.data.local.entities.toDomain as toDomainMessage
 
 @Singleton
 class ChatRepositoryImpl @Inject constructor(
@@ -45,9 +51,20 @@ class ChatRepositoryImpl @Inject constructor(
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
 
     init {
+        // Global ACK observer
         repositoryScope.launch {
             socketClient.observeAcks().collectLatest { ack ->
-                messageDao.deleteMessageById(ack.clientTempId)
+                val userId = sessionGateway.currentUserIdOrNull() ?: return@collectLatest
+                messageDao.deleteMessageById(ack.clientTempId, userId)
+            }
+        }
+
+        // Global Message observer - ensures messages are saved even if ChatScreen is closed
+        repositoryScope.launch {
+            socketClient.observeMessages().collect { apiMsg ->
+                val userId = sessionGateway.currentUserIdOrNull() ?: return@collect
+                val domain = apiMsg.toDomainDto()
+                messageDao.insertMessage(domain.toEntity(userId))
             }
         }
     }
@@ -62,6 +79,12 @@ class ChatRepositoryImpl @Inject constructor(
     override suspend fun disconnectRealtime() = socketClient.disconnect()
     override suspend fun joinConversation(conversationId: String) = socketClient.joinConversation(conversationId)
     override suspend fun markAsRead(conversationId: String) = socketClient.markAsRead(conversationId)
+
+    override suspend fun updateReadWatermark(conversationId: String, userId: String, messageId: String?, lastReadTime: Instant?) {
+        val ownerId = sessionGateway.currentUserIdOrNull() ?: return
+        memberDao.updateReadWatermarkWithTime(conversationId, userId, ownerId, messageId, lastReadTime?.toEpochMilli())
+    }
+
     override suspend fun sendTypingStatus(conversationId: String, isTyping: Boolean) = socketClient.sendTypingStatus(conversationId, isTyping)
 
     override fun observeConversations(): Flow<List<Conversation>> {
@@ -84,11 +107,53 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeMembers(conversationId: String): Flow<List<GroupMember>> {
+        return sessionStore.sessionFlow.flatMapLatest { session ->
+            val userId = session?.userId ?: return@flatMapLatest flowOf(emptyList())
+            memberDao.observeMembers(conversationId, userId).map { entities ->
+                entities.map { entity ->
+                    GroupMember(
+                        userId = entity.userId,
+                        displayName = entity.displayName,
+                        phone = entity.phone,
+                        role = entity.role,
+                        joinedAt = Instant.now(), // Placeholder
+                        lastReadTime = entity.lastReadTime?.let { Instant.ofEpochMilli(it) },
+                        lastDeliveredTime = entity.lastDeliveredTime?.let { Instant.ofEpochMilli(it) },
+                        lastSeen = entity.lastSeen?.let { Instant.ofEpochMilli(it) }
+                    )
+                }
+            }
+        }
+    }
+
     override suspend fun fetchConversations() {
         val userId = sessionGateway.requireSession().userId
         val response = conversationsApi.listConversations()
         val networkConversations = response.conversations.map { it.toDomainDto(userId) }
+
+        // Save conversations
         conversationDao.insertConversations(networkConversations.map { it.toEntity(userId) })
+
+        // Save members
+        response.conversations.forEach { apiConv ->
+            apiConv.members?.let { apiMembers ->
+                val memberEntities = apiMembers.map { m ->
+                    MemberEntity(
+                        conversationId = apiConv.id,
+                        ownerId = userId,
+                        userId = m.user.id,
+                        displayName = m.user.displayName,
+                        phone = m.user.phone,
+                        role = m.role,
+                        lastReadMessageId = m.lastReadMessageId,
+                        lastReadTime = m.lastReadMessage?.createdAt?.let { Instant.parse(it).toEpochMilli() },
+                        lastSeen = m.user.lastSeen?.let { Instant.parse(it).toEpochMilli() }
+                    )
+                }
+                memberDao.insertMembers(memberEntities)
+            }
+        }
     }
 
     override suspend fun getConversations(): List<Conversation> {
@@ -116,7 +181,7 @@ class ChatRepositoryImpl @Inject constructor(
         val response = conversationsApi.updateGroup(conversationId, UpdateGroupRequest(name = name, description = description))
         val domain = response.conversation.toDomainDto(userId)
 
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             android.util.Log.d("ChatRepository", "Inserting updated conversation to local DB: ${domain.name}")
             conversationDao.insertConversation(domain.toEntity(userId))
         }
@@ -127,14 +192,14 @@ class ChatRepositoryImpl @Inject constructor(
 
     override suspend fun addGroupMembers(conversationId: String, memberIds: List<String>) {
         conversationsApi.addMembers(conversationId, AddMembersRequest(memberIds))
-        getGroupMembers(conversationId) // Refresh local member cache
+        getGroupMembers(conversationId)
     }
 
-    override suspend fun getGroupMembers(conversationId: String): List<com.chatapp.domain.model.GroupMember> {
+    override suspend fun getGroupMembers(conversationId: String): List<GroupMember> {
         val userId = sessionGateway.requireSession().userId
         val response = conversationsApi.getMembers(conversationId)
         val domainMembers = response.members.map { apiMember ->
-            com.chatapp.domain.model.GroupMember(
+            GroupMember(
                 userId = apiMember.userId,
                 displayName = apiMember.user.displayName,
                 phone = apiMember.user.phone,
@@ -144,7 +209,6 @@ class ChatRepositoryImpl @Inject constructor(
             )
         }
 
-        // Update local member cache
         memberDao.clearMembersForConversation(conversationId, userId)
         memberDao.insertMembers(domainMembers.map { member ->
             MemberEntity(
@@ -179,14 +243,13 @@ class ChatRepositoryImpl @Inject constructor(
     override suspend fun leaveGroup(conversationId: String) {
         val userId = sessionGateway.requireSession().userId
         conversationsApi.removeMember(conversationId, userId)
-        // Surgically update local DB because backend will no longer include this in fetchConversations()
         conversationDao.updateMembershipStatus(conversationId, userId, false)
     }
 
     override suspend fun deleteConversationLocally(conversationId: String) {
         val userId = sessionGateway.requireSession().userId
         conversationDao.deleteConversation(conversationId, userId)
-        messageDao.deleteMessagesForConversation(conversationId)
+        messageDao.deleteMessagesForConversation(conversationId, userId)
     }
 
     override suspend fun muteConversation(conversationId: String) {
@@ -198,16 +261,20 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     override fun observeMessages(conversationId: String): Flow<List<ChatMessage>> {
-        return messageDao.getMessages(conversationId).map { entities ->
-            entities.map { it.toDomainEntity() }
+        return sessionStore.sessionFlow.flatMapLatest { session ->
+            val userId = session?.userId ?: return@flatMapLatest flowOf(emptyList())
+            messageDao.getMessages(conversationId, userId).map { entities ->
+                entities.map { it.toDomainMessage() }
+            }
         }
     }
 
     override suspend fun fetchHistory(conversationId: String, cursor: String?, limit: Int): String? {
         return runCatching {
+            val userId = sessionGateway.requireSession().userId
             val response = conversationsApi.getMessages(conversationId, cursor, limit)
             val domainMessages = response.messages.map { it.toDomainDto() }
-            messageDao.insertMessages(domainMessages.map { it.toEntity() })
+            messageDao.insertMessages(domainMessages.map { it.toEntity(userId) })
             response.nextCursor
         }.getOrNull()
     }
@@ -217,18 +284,18 @@ class ChatRepositoryImpl @Inject constructor(
         return emptyList<ChatMessage>() to next
     }
 
-    override suspend fun searchMessages(query: String): com.chatapp.domain.model.SearchResults {
+    override suspend fun searchMessages(query: String): SearchResults {
         return try {
             val response = conversationsApi.searchMessages(query)
             val userId = sessionGateway.currentUserIdOrNull() ?: ""
-            com.chatapp.domain.model.SearchResults(
+            SearchResults(
                 messages = response.messages.map { it.toDomainDto() },
                 contacts = response.contacts.map { it.toDomainUser() },
                 groups = response.groups.map { it.toDomainDto(userId) }
             )
         } catch (e: Exception) {
             android.util.Log.e("ChatRepository", "Error during search mapping", e)
-            com.chatapp.domain.model.SearchResults()
+            SearchResults()
         }
     }
 
@@ -245,8 +312,8 @@ class ChatRepositoryImpl @Inject constructor(
             status = MessageStatus.SENT,
             parentId = parentId
         )
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            messageDao.insertMessage(localMsg.toEntity())
+        withContext(Dispatchers.IO) {
+            messageDao.insertMessage(localMsg.toEntity(session.userId))
         }
 
         socketClient.sendMessage(conversationId, content, clientTempId, parentId)
@@ -268,17 +335,28 @@ class ChatRepositoryImpl @Inject constructor(
         runCatching { conversationsApi.deleteMessage(messageId) }
     }
 
-    override fun observeIncomingMessages(): Flow<ChatMessage> {
-        return socketClient.observeMessages().map { apiMsg ->
-            val domain = apiMsg.toDomainDto()
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                messageDao.insertMessage(domain.toEntity())
-            }
-            domain
+    override suspend fun getMessageInfo(messageId: String): List<MessageRecipientStatus> {
+        val response = conversationsApi.getMessageInfo(messageId)
+        return response.info.map { item ->
+            MessageRecipientStatus(
+                userId = item.user.id,
+                displayName = item.user.displayName,
+                phone = item.user.phone,
+                status = item.status,
+                timestamp = item.timestamp?.let { ts -> Instant.parse(ts) }
+            )
         }
     }
 
+    override fun observeIncomingMessages(): Flow<ChatMessage> {
+        // Now handled by global listener in init{} for better reliability
+        return socketClient.observeMessages().map { it.toDomainDto() }
+    }
+
     override fun observeReadEvents(): Flow<Pair<String, String>> = socketClient.observeReadEvents().map { it.conversationId to it.readerId }
+    override fun observeStatusUpdates(): Flow<StatusUpdate> = socketClient.observeStatusUpdates().map {
+        StatusUpdate(it.conversationId, it.userId, it.lastReadMessageId, it.lastReadMessageTime?.let { ts -> Instant.parse(ts) })
+    }
     override fun observeTypingEvents(): Flow<Triple<String, String, Boolean>> = socketClient.observeTypingEvents().map { Triple(it.conversationId, it.userId, it.isTyping) }
     override fun observeConnectionState(): Flow<Boolean> = socketClient.observeConnection()
     override suspend fun currentUserIdOrNull(): String? = sessionGateway.currentUserIdOrNull()

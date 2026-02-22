@@ -8,6 +8,7 @@ object Routes {
     const val CREATE_GROUP = "create_group"
     const val GROUP_INFO = "group_info/{conversationId}"
     const val ADD_MEMBERS = "add_members/{conversationId}"
+    const val MESSAGE_INFO = "message_info/{messageId}"
     const val CONTACT_INFO = "contact_info/{userId}"
     const val CHAT = "chat"
 
@@ -17,6 +18,10 @@ object Routes {
 
     fun addMembersDestination(conversationId: String): String {
         return "add_members/$conversationId"
+    }
+
+    fun messageInfoDestination(messageId: String): String {
+        return "message_info/$messageId"
     }
 
     fun contactInfoDestination(userId: String): String {

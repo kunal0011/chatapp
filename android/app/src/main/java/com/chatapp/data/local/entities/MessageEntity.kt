@@ -1,7 +1,6 @@
 package com.chatapp.data.local.entities
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.chatapp.domain.model.ChatMessage
 import com.chatapp.domain.model.MessageReaction
 import com.chatapp.domain.model.MessageStatus
@@ -10,9 +9,13 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.time.Instant
 
-@Entity(tableName = "messages")
+@Entity(
+    tableName = "messages",
+    primaryKeys = ["id", "ownerId"]
+)
 data class MessageEntity(
-    @PrimaryKey val id: String,
+    val id: String,
+    val ownerId: String, // Partition data by logged-in user
     val conversationId: String,
     val senderId: String,
     val senderName: String,
@@ -32,7 +35,7 @@ fun MessageEntity.toDomain(): ChatMessage {
     val gson = Gson()
     val typeToken = object : TypeToken<List<MessageReaction>>() {}.type
     val reactions: List<MessageReaction> = if (reactionsJson != null) gson.fromJson(reactionsJson, typeToken) else emptyList()
-    
+
     return ChatMessage(
         id = id,
         conversationId = conversationId,
@@ -51,12 +54,13 @@ fun MessageEntity.toDomain(): ChatMessage {
     )
 }
 
-fun ChatMessage.toEntity(): MessageEntity {
+fun ChatMessage.toEntity(ownerId: String): MessageEntity {
     val gson = Gson()
     val reactionsJson = if (reactions.isNotEmpty()) gson.toJson(reactions) else null
-    
+
     return MessageEntity(
         id = id,
+        ownerId = ownerId,
         conversationId = conversationId,
         senderId = senderId,
         senderName = senderName,

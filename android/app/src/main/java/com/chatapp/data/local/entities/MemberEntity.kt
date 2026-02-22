@@ -25,5 +25,9 @@ data class MemberEntity(
     val phone: String,
     val role: String, // ADMIN, MEMBER
     val isMuted: Boolean = false,
+    val lastReadMessageId: String? = null,
+    val lastReadTime: Long? = null,
+    val lastDeliveredMessageId: String? = null,
+    val lastDeliveredTime: Long? = null,
     val lastSeen: Long? = null
 )

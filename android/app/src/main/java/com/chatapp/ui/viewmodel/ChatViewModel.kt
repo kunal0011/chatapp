@@ -28,11 +28,13 @@ data class ChatUiState(
     val isGroup: Boolean = false,
     val memberCount: Int = 0,
     val isMember: Boolean = true,
+    val members: List<com.chatapp.domain.model.GroupMember> = emptyList(),
     val loading: Boolean = true,
     val loadingOlder: Boolean = false,
     val sending: Boolean = false,
     val replyingTo: ChatMessage? = null,
     val editingMessage: ChatMessage? = null,
+    val selectedMessageId: String? = null,
     val messages: List<ChatMessage> = emptyList(),
     val nextCursor: String? = null,
     val error: String? = null
@@ -57,6 +59,7 @@ class ChatViewModel @Inject constructor(
 
     private var observerJob: Job? = null
     private var readObserverJob: Job? = null
+    private var statusObserverJob: Job? = null
     private var typingObserverJob: Job? = null
     private var typingPublishJob: Job? = null
 
@@ -92,7 +95,14 @@ class ChatViewModel @Inject constructor(
                 }
             }
 
-            // 2. Observe local messages
+            // 2. Observe members (for watermark tracking)
+            launch {
+                chatRepository.observeMembers(conversationId).collectLatest { list ->
+                    _state.update { it.copy(members = list) }
+                }
+            }
+
+            // 3. Observe local messages
             launch {
                 chatRepository.observeMessages(conversationId).collectLatest { list ->
                     val otherId = list.firstOrNull { it.senderId != currentUserId }?.senderId
@@ -115,6 +125,7 @@ class ChatViewModel @Inject constructor(
                 // Start socket event listeners
                 startObserver()
                 startReadObserver()
+                startStatusObserver()
                 startTypingObserver()
                 startConnectionObserver()
 
@@ -145,7 +156,18 @@ class ChatViewModel @Inject constructor(
         readObserverJob = viewModelScope.launch {
             chatRepository.observeReadEvents().collect { (convId, readerId) ->
                 if (convId == conversationId && readerId != _state.value.currentUserId) {
-                    // Room handles UI updates
+                    // Handled by status observer now
+                }
+            }
+        }
+    }
+
+    private fun startStatusObserver() {
+        statusObserverJob?.cancel()
+        statusObserverJob = viewModelScope.launch {
+            chatRepository.observeStatusUpdates().collect { update ->
+                if (update.conversationId == conversationId) {
+                    chatRepository.updateReadWatermark(update.conversationId, update.userId, update.lastReadId, update.lastReadTime)
                 }
             }
         }
@@ -211,6 +233,14 @@ class ChatViewModel @Inject constructor(
     fun cancelEdit() {
         _state.update { it.copy(editingMessage = null) }
         _messageInput.value = ""
+    }
+
+    fun selectMessage(messageId: String?) {
+        _state.update { it.copy(selectedMessageId = messageId) }
+    }
+
+    fun clearSelection() {
+        _state.update { it.copy(selectedMessageId = null) }
     }
 
     fun sendReaction(messageId: String, emoji: String) {

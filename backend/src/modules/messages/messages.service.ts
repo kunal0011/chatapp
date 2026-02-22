@@ -272,7 +272,64 @@ export async function updateMessageStatus(messageId: string, status: 'DELIVERED'
   });
 }
 
+export async function getMessageInfo(messageId: string, userId: string) {
+  const message = await prisma.message.findUnique({
+    where: { id: messageId },
+    select: {
+      id: true,
+      createdAt: true,
+      senderId: true,
+      conversationId: true
+    }
+  });
+
+  if (!message) throw new AppError(StatusCodes.NOT_FOUND, 'Message not found');
+  await ensureConversationMembership(message.conversationId, userId);
+
+  const members = await prisma.conversationMember.findMany({
+    where: { conversationId: message.conversationId },
+    include: {
+      user: { select: { id: true, displayName: true, phone: true } },
+      lastReadMessage: { select: { createdAt: true } },
+      lastDeliveredMessage: { select: { createdAt: true } }
+    }
+  });
+
+  const info = members
+    .filter(m => m.userId !== message.senderId)
+    .map(m => {
+      let status: 'READ' | 'DELIVERED' | 'SENT' = 'SENT';
+      
+      if (m.lastReadMessage && m.lastReadMessage.createdAt >= message.createdAt) {
+        status = 'READ';
+      } else if (m.lastDeliveredMessage && m.lastDeliveredMessage.createdAt >= message.createdAt) {
+        status = 'DELIVERED';
+      }
+
+      return {
+        user: m.user,
+        status,
+        timestamp: status === 'READ' ? m.lastReadMessage?.createdAt : 
+                   status === 'DELIVERED' ? m.lastDeliveredMessage?.createdAt : null
+      };
+    });
+
+  return info;
+}
+
 export async function markConversationAsRead(conversationId: string, userId: string) {
+  const lastMessage = await prisma.message.findFirst({
+    where: { conversationId },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  if (lastMessage) {
+    await prisma.conversationMember.update({
+      where: { conversationId_userId: { conversationId, userId } },
+      data: { lastReadMessageId: lastMessage.id }
+    });
+  }
+
   await prisma.message.updateMany({
     where: {
       conversationId,
@@ -281,4 +338,6 @@ export async function markConversationAsRead(conversationId: string, userId: str
     },
     data: { status: 'READ' }
   });
+
+  return lastMessage;
 }
