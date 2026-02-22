@@ -3,7 +3,7 @@ import { authGuard } from '../../common/middleware/auth.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { validate } from '../../common/middleware/validate.js';
 import { messageParamsSchema, messageQuerySchema } from './messages.schema.js';
-import { getConversationMessages, deleteMessage, search, mute, unmute, getMessageDetails } from './messages.controller.js';
+import { getConversationMessages, deleteMessage, search, muteConversation, unmuteConversation, getMessageDetails } from './messages.controller.js';
 
 export const messagesRouter = Router();
 
@@ -17,7 +17,7 @@ messagesRouter.get(
   asyncHandler(getConversationMessages)
 );
 
-messagesRouter.post('/conversations/:conversationId/mute', authGuard, asyncHandler(mute));
-messagesRouter.post('/conversations/:conversationId/unmute', authGuard, asyncHandler(unmute));
+messagesRouter.post('/conversations/:conversationId/mute', authGuard, asyncHandler(muteConversation));
+messagesRouter.post('/conversations/:conversationId/unmute', authGuard, asyncHandler(unmuteConversation));
 
 messagesRouter.delete('/:id', authGuard, asyncHandler(deleteMessage));

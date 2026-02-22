@@ -26,4 +26,9 @@ interface MemberDao {
 
     @Query("DELETE FROM conversation_members WHERE conversationId = :conversationId AND ownerId = :ownerId")
     suspend fun clearMembersForConversation(conversationId: String, ownerId: String)
+
+    /** Synchronous/suspend query for E2EE recipient lookup — used to find the other party's userId */
+    @Query("SELECT * FROM conversation_members WHERE conversationId = :conversationId AND ownerId = :ownerId")
+    suspend fun getMembersOnce(conversationId: String, ownerId: String): List<MemberEntity>
 }
+

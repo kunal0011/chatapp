@@ -162,13 +162,24 @@ class ChatSocketClient @Inject constructor(
         }
     }
 
-    suspend fun sendMessage(conversationId: String, content: String, clientTempId: String, parentId: String? = null) {
+    suspend fun sendMessage(
+        conversationId: String,
+        content: String,
+        clientTempId: String,
+        parentId: String? = null,
+        isEncrypted: Boolean = false,
+        ephemeralKey: String? = null
+    ) {
         mutex.withLock {
             val payload = JSONObject().apply {
                 put("conversationId", conversationId)
                 put("content", content)
                 put("clientTempId", clientTempId)
                 if (parentId != null) put("parentId", parentId)
+                if (isEncrypted) {
+                    put("isEncrypted", true)
+                    if (ephemeralKey != null) put("ephemeralKey", ephemeralKey)
+                }
             }
             socket?.emit("message:send", payload)
         }

@@ -3,6 +3,7 @@ package com.chatapp.core.di
 import com.chatapp.BuildConfig
 import com.chatapp.data.api.AuthApi
 import com.chatapp.data.api.ConversationsApi
+import com.chatapp.data.api.KeysApi
 import com.chatapp.data.api.UsersApi
 import com.chatapp.data.network.AuthAuthenticator
 import com.chatapp.data.network.AuthInterceptor
@@ -67,4 +68,9 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideConversationsApi(retrofit: Retrofit): ConversationsApi = retrofit.create(ConversationsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideKeysApi(retrofit: Retrofit): KeysApi = retrofit.create(KeysApi::class.java)
 }
+

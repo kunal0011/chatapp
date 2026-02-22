@@ -124,6 +124,12 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("io.mockk:mockk:1.13.12")
+
+    // E2EE Cryptography (both pure-JVM, zero JNI, 16KB page-size safe)
+    // Google Tink: AEAD (AES-256-GCM), HKDF, secure key management
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
+    // Bouncy Castle: X25519 ECDH (Curve25519) for X3DH key agreement
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.78.1")
 }
 
 detekt {

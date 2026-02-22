@@ -30,6 +30,9 @@ interface ConversationDao {
     @Query("UPDATE conversations SET isMember = :isMember WHERE id = :id AND ownerId = :ownerId")
     suspend fun updateMembershipStatus(id: String, ownerId: String, isMember: Boolean)
 
+    @Query("UPDATE conversations SET lastMessage = :lastMessage, lastMessageTime = :lastMessageTime WHERE id = :id AND ownerId = :ownerId")
+    suspend fun updateLastMessage(id: String, ownerId: String, lastMessage: String, lastMessageTime: Long)
+
     @Query("DELETE FROM conversations WHERE id = :id AND ownerId = :ownerId")
     suspend fun deleteConversation(id: String, ownerId: String)
 

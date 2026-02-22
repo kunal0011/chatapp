@@ -40,7 +40,10 @@ data class ApiMessage(
     @SerializedName("parent") val parent: ApiParentMessage? = null,
     @SerializedName("reactions") val reactions: List<ApiReaction>? = null,
     @SerializedName("createdAt") val createdAt: String,
-    @SerializedName("sender") val sender: ApiUser
+    @SerializedName("sender") val sender: ApiUser,
+    // E2EE fields (null for legacy unencrypted messages)
+    @SerializedName("isEncrypted") val isEncrypted: Boolean = false,
+    @SerializedName("ephemeralKey") val ephemeralKey: String? = null
 )
 
 data class ApiParentMessage(
@@ -71,7 +74,7 @@ fun ApiMessage.toDomain(): ChatMessage {
         conversationId = conversationId,
         senderId = senderId,
         senderName = sender.displayName,
-        content = content,
+        content = if (isEncrypted) "Encrypted message" else content,
         type = messageType,
         createdAt = Instant.parse(createdAt),
         isDeleted = isDeleted,

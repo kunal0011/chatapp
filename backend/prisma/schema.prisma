@@ -8,23 +8,24 @@ datasource db {
 }
 
 model User {
-  id             String               @id @default(cuid())
-  phone          String               @unique
-  displayName    String
-  passwordHash   String
-  isActive       Boolean              @default(true)
-  lastSeen       DateTime             @default(now())
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  messages       Message[]
-  memberships    ConversationMember[]
-  refreshTokens  RefreshToken[]
-  contacts       UserContact[]        @relation("UserToContacts")
-  addedBy        UserContact[]        @relation("UserAsContact")
-  pushTokens     PushToken[]
-  blockedUsers   BlockedUser[]        @relation("BlockerToBlocked")
-  blockedBy      BlockedUser[]        @relation("BlockedToBlocker")
-  reactions      Reaction[]
+  id            String               @id @default(cuid())
+  phone         String               @unique
+  displayName   String
+  passwordHash  String
+  isActive      Boolean              @default(true)
+  lastSeen      DateTime             @default(now())
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  messages      Message[]
+  memberships   ConversationMember[]
+  refreshTokens RefreshToken[]
+  contacts      UserContact[]        @relation("UserToContacts")
+  addedBy       UserContact[]        @relation("UserAsContact")
+  pushTokens    PushToken[]
+  blockedUsers  BlockedUser[]        @relation("BlockerToBlocked")
+  blockedBy     BlockedUser[]        @relation("BlockedToBlocker")
+  reactions     Reaction[]
+  keyBundle     UserKeyBundle?
 }
 
 model OtpVerification {
@@ -35,12 +36,12 @@ model OtpVerification {
 }
 
 model BlockedUser {
-  id          String   @id @default(cuid())
-  blockerId   String
-  blockedId   String
-  createdAt   DateTime @default(now())
-  blocker     User     @relation("BlockerToBlocked", fields: [blockerId], references: [id], onDelete: Cascade)
-  blocked     User     @relation("BlockedToBlocker", fields: [blockedId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+  blocker   User     @relation("BlockerToBlocked", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlockedToBlocker", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
   @@index([blockerId])
@@ -69,58 +70,73 @@ model UserContact {
 }
 
 model Conversation {
-  id             String               @id @default(cuid())
-  type           ConversationType     @default(DIRECT)
-  name           String?
-  description    String?
-  avatarUrl      String?
-  creatorId      String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  members        ConversationMember[]
-  messages       Message[]
+  id          String               @id @default(cuid())
+  type        ConversationType     @default(DIRECT)
+  name        String?
+  description String?
+  avatarUrl   String?
+  creatorId   String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  members     ConversationMember[]
+  messages    Message[]
 
   @@index([updatedAt])
 }
 
 model ConversationMember {
-  id                    String         @id @default(cuid())
-  conversationId        String
-  userId                String
-  role                  MemberRole     @default(MEMBER)
-  isMuted               Boolean        @default(false)
-  lastReadMessageId     String?
+  id                     String       @id @default(cuid())
+  conversationId         String
+  userId                 String
+  role                   MemberRole   @default(MEMBER)
+  isMuted                Boolean      @default(false)
+  lastReadMessageId      String?
   lastDeliveredMessageId String?
-  joinedAt              DateTime       @default(now())
-  conversation          Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  lastReadMessage       Message?       @relation("LastRead", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
-  lastDeliveredMessage  Message?       @relation("LastDelivered", fields: [lastDeliveredMessageId], references: [id], onDelete: SetNull)
+  joinedAt               DateTime     @default(now())
+  conversation           Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage        Message?     @relation("LastRead", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+  lastDeliveredMessage   Message?     @relation("LastDelivered", fields: [lastDeliveredMessageId], references: [id], onDelete: SetNull)
 
   @@unique([conversationId, userId])
   @@index([userId])
 }
 
 model Message {
-  id               String         @id @default(cuid())
-  conversationId   String
-  senderId         String
-  parentId         String?
-  content          String
-  type             MessageType    @default(USER)
-  status           MessageStatus  @default(SENT)
-  isDeleted        Boolean        @default(false)
-  isEdited         Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  conversation     Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender           User           @relation(fields: [senderId], references: [id], onDelete: Restrict)
-  parent           Message?       @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
-  replies          Message[]      @relation("Replies")
-  reactions        Reaction[]
-  readByMembers    ConversationMember[] @relation("LastRead")
+  id                 String               @id @default(cuid())
+  conversationId     String
+  senderId           String
+  parentId           String?
+  content            String
+  type               MessageType          @default(USER)
+  status             MessageStatus        @default(SENT)
+  isDeleted          Boolean              @default(false)
+  isEdited           Boolean              @default(false)
+  isEncrypted        Boolean              @default(false)
+  ephemeralKey       String? // base64 X3DH ephemeral public key (first message of session)
+  createdAt          DateTime             @default(now())
+  conversation       Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender             User                 @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  parent             Message?             @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies            Message[]            @relation("Replies")
+  reactions          Reaction[]
+  readByMembers      ConversationMember[] @relation("LastRead")
   deliveredToMembers ConversationMember[] @relation("LastDelivered")
 
   @@index([conversationId, createdAt])
+}
+
+model UserKeyBundle {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  identityKey    String // base64 Curve25519 public key
+  signedPreKey   String // base64 JSON: {keyId, publicKey, signature}
+  oneTimePreKeys String // base64 JSON array: [{keyId, publicKey}, ...]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum MemberRole {
@@ -153,15 +169,15 @@ enum MessageStatus {
 }
 
 model RefreshToken {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  familyId    String?
-  isUsed      Boolean  @default(false)
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  familyId  String?
+  isUsed    Boolean   @default(false)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([familyId])

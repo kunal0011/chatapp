@@ -21,16 +21,16 @@ interface AuthedSocket extends Socket {
 const REDIS_ONLINE_USERS_KEY = 'chat:online_users';
 
 async function addOnlineUser(userId: string) {
-    await redis.sadd(REDIS_ONLINE_USERS_KEY, userId);
+  await redis.sadd(REDIS_ONLINE_USERS_KEY, userId);
 }
 
 async function removeOnlineUser(userId: string) {
-    await redis.srem(REDIS_ONLINE_USERS_KEY, userId);
+  await redis.srem(REDIS_ONLINE_USERS_KEY, userId);
 }
 
 export async function isUserOnline(userId: string): Promise<boolean> {
-    const result = await redis.sismember(REDIS_ONLINE_USERS_KEY, userId);
-    return result === 1;
+  const result = await redis.sismember(REDIS_ONLINE_USERS_KEY, userId);
+  return result === 1;
 }
 
 interface MessageSendPayload {
@@ -38,20 +38,22 @@ interface MessageSendPayload {
   content: string;
   parentId?: string;
   clientTempId?: string;
+  isEncrypted?: boolean;   // true when content is E2EE ciphertext (base64)
+  ephemeralKey?: string;   // base64 X3DH ephemeral public key (first message of session)
 }
 
 interface MessageEditPayload {
-    messageId: string;
-    content: string;
+  messageId: string;
+  content: string;
 }
 
 interface MessageUnsendPayload {
-    messageId: string;
+  messageId: string;
 }
 
 interface MessageReactionPayload {
-    messageId: string;
-    emoji: string;
+  messageId: string;
+  emoji: string;
 }
 
 interface MessageReadPayload {
@@ -108,7 +110,7 @@ export function registerSocketServer(httpServer: HttpServer) {
   io.on('connection', async (socket: Socket) => {
     const authedSocket = socket as AuthedSocket;
     const userId = authedSocket.data.userId;
-    
+
     await addOnlineUser(userId);
     await updateLastSeen(userId);
     logger.info({ userId, socketId: socket.id }, 'Socket connected');
@@ -118,9 +120,9 @@ export function registerSocketServer(httpServer: HttpServer) {
         await ensureConversationMembership(conversationId, userId);
         await socket.join(conversationId);
         logger.info({ userId, conversationId, socketId: socket.id }, 'User joined conversation room');
-        
+
         await markConversationAsRead(conversationId, userId);
-        
+
         socket.to(conversationId).emit('conversation:read', {
           conversationId,
           readerId: userId
@@ -136,39 +138,39 @@ export function registerSocketServer(httpServer: HttpServer) {
     });
 
     socket.on('typing:start', (payload: TypingPayload) => {
-        socket.to(payload.conversationId).emit('typing:start', {
-            conversationId: payload.conversationId,
-            userId: userId
-        });
+      socket.to(payload.conversationId).emit('typing:start', {
+        conversationId: payload.conversationId,
+        userId: userId
+      });
     });
 
     socket.on('typing:stop', (payload: TypingPayload) => {
-        socket.to(payload.conversationId).emit('typing:stop', {
-            conversationId: payload.conversationId,
-            userId: userId
-        });
+      socket.to(payload.conversationId).emit('typing:stop', {
+        conversationId: payload.conversationId,
+        userId: userId
+      });
     });
 
     socket.on('message:read', async (payload: MessageReadPayload) => {
-        try {
-            const lastReadMessage = await markConversationAsRead(payload.conversationId, userId);
-            
-            // Broadcast that this user has advanced their read watermark
-            io.to(payload.conversationId).emit('message:status_update', {
-                conversationId: payload.conversationId,
-                userId: userId,
-                lastReadMessageId: lastReadMessage?.id,
-                lastReadMessageTime: lastReadMessage?.createdAt,
-                status: 'READ'
-            });
+      try {
+        const lastReadMessage = await markConversationAsRead(payload.conversationId, userId);
 
-            socket.to(payload.conversationId).emit('conversation:read', {
-                conversationId: payload.conversationId,
-                readerId: userId
-            });
-        } catch (error) {
-            logger.error(error, 'Error handling message:read');
-        }
+        // Broadcast that this user has advanced their read watermark
+        io.to(payload.conversationId).emit('message:status_update', {
+          conversationId: payload.conversationId,
+          userId: userId,
+          lastReadMessageId: lastReadMessage?.id,
+          lastReadMessageTime: lastReadMessage?.createdAt,
+          status: 'READ'
+        });
+
+        socket.to(payload.conversationId).emit('conversation:read', {
+          conversationId: payload.conversationId,
+          readerId: userId
+        });
+      } catch (error) {
+        logger.error(error, 'Error handling message:read');
+      }
     });
 
     socket.on('message:send', async (payload: MessageSendPayload) => {
@@ -178,7 +180,9 @@ export function registerSocketServer(httpServer: HttpServer) {
           conversationId: payload.conversationId,
           senderId: userId,
           content,
-          parentId: payload.parentId
+          ...(payload.parentId && { parentId: payload.parentId }),
+          isEncrypted: payload.isEncrypted ?? false,
+          ...(payload.ephemeralKey && { ephemeralKey: payload.ephemeralKey }),
         });
 
         logger.info({ userId, conversationId: payload.conversationId, messageId: message.id }, 'Broadcasting new message to room');
@@ -198,32 +202,32 @@ export function registerSocketServer(httpServer: HttpServer) {
     });
 
     socket.on('message:edit', async (payload: MessageEditPayload) => {
-        try {
-            const message = await editMessage(payload.messageId, userId, payload.content.trim());
-            io.to(message.conversationId).emit('message:update', { message });
-        } catch (error) {
-            socket.emit('message:error', { message: (error as Error).message });
-        }
+      try {
+        const message = await editMessage(payload.messageId, userId, payload.content.trim());
+        io.to(message.conversationId).emit('message:update', { message });
+      } catch (error) {
+        socket.emit('message:error', { message: (error as Error).message });
+      }
     });
 
     socket.on('message:unsend', async (payload: MessageUnsendPayload) => {
-        try {
-            const message = await softDeleteMessage(payload.messageId, userId);
-            io.to(message.conversationId).emit('message:update', { message });
-        } catch (error) {
-            socket.emit('message:error', { message: (error as Error).message });
-        }
+      try {
+        const message = await softDeleteMessage(payload.messageId, userId);
+        io.to(message.conversationId).emit('message:update', { message });
+      } catch (error) {
+        socket.emit('message:error', { message: (error as Error).message });
+      }
     });
 
     socket.on('message:reaction', async (payload: MessageReactionPayload) => {
-        try {
-            const message = await addOrUpdateReaction(payload.messageId, userId, payload.emoji);
-            if (message) {
-                io.to(message.conversationId).emit('message:update', { message });
-            }
-        } catch (error) {
-            socket.emit('message:error', { message: (error as Error).message });
+      try {
+        const message = await addOrUpdateReaction(payload.messageId, userId, payload.emoji);
+        if (message) {
+          io.to(message.conversationId).emit('message:update', { message });
         }
+      } catch (error) {
+        socket.emit('message:error', { message: (error as Error).message });
+      }
     });
 
     socket.on('disconnect', async (reason) => {

@@ -6,45 +6,46 @@ import { AppError } from '../../common/errors/app-error.js';
 
 export async function getConversationMessages(req: Request, res: Response) {
   const result = await listConversationMessages({
-    conversationId: req.params.conversationId,
-    userId: req.auth!.userId,
-    cursor: req.query.cursor as string | undefined,
-    limit: Number(req.query.limit)
+    conversationId: req.params.conversationId as string,
+    userId: req.auth!.userId as string,
+    ...(req.query.cursor && { cursor: req.query.cursor as string }),
+    ...(req.query.limit && { limit: Number(req.query.limit) })
   });
 
   res.status(StatusCodes.OK).json(result);
 }
 
 export async function deleteMessage(req: Request, res: Response) {
-    const { id } = req.params;
-    await softDeleteMessage(id, req.auth!.userId);
-    res.status(StatusCodes.OK).json({ message: 'Message deleted' });
+  const id = req.params.id as string;
+  await softDeleteMessage(id, req.auth!.userId as string);
+  res.status(StatusCodes.NO_CONTENT).send();
 }
 
 export async function getMessageDetails(req: Request, res: Response) {
-  const { id } = req.params;
-  const info = await getMessageInfo(id, req.auth!.userId);
+  const id = req.params.id as string;
+  const info = await getMessageInfo(id, req.auth!.userId as string);
   res.status(StatusCodes.OK).json({ info });
 }
 
 export async function search(req: Request, res: Response) {
-    const { q } = req.query;
-    if (typeof q !== 'string' || q.trim().length === 0) {
-        throw new AppError(StatusCodes.BAD_REQUEST, 'Query parameter q is required');
-    }
+  const { query, conversationId } = req.query;
+  if (typeof query !== 'string' || !query.trim()) {
+    throw new AppError(StatusCodes.BAD_REQUEST, 'Valid search query required');
+  }
 
-    const result = await searchMessages(req.auth!.userId, q.trim());
-    res.status(StatusCodes.OK).json(result);
+  const result = await searchMessages(req.auth!.userId as string, query.trim());
+
+  res.status(StatusCodes.OK).json(result);
 }
 
-export async function mute(req: Request, res: Response) {
-    const { conversationId } = req.params;
-    await toggleMute(conversationId, req.auth!.userId, true);
-    res.status(StatusCodes.OK).json({ message: 'Conversation muted' });
+export async function muteConversation(req: Request, res: Response) {
+  const conversationId = req.params.conversationId as string;
+  await toggleMute(conversationId, req.auth!.userId as string, true);
+  res.status(StatusCodes.OK).json({ message: 'Conversation muted' });
 }
 
-export async function unmute(req: Request, res: Response) {
-    const { conversationId } = req.params;
-    await toggleMute(conversationId, req.auth!.userId, false);
-    res.status(StatusCodes.OK).json({ message: 'Conversation unmuted' });
+export async function unmuteConversation(req: Request, res: Response) {
+  const conversationId = req.params.conversationId as string;
+  await toggleMute(conversationId, req.auth!.userId as string, false);
+  res.status(StatusCodes.OK).json({ message: 'Conversation unmuted' });
 }

@@ -19,8 +19,8 @@ interface JwtBase {
   type: 'access' | 'refresh';
 }
 
-function signJwt(payload: JwtBase, secret: Secret, expiresIn: SignOptions['expiresIn']): string {
-  return jwt.sign(payload, secret, { expiresIn });
+function signJwt(payload: JwtBase, secret: Secret, expiresIn: number | string): string {
+  return jwt.sign(payload, secret, { expiresIn: expiresIn as any });
 }
 
 async function persistRefreshToken(userId: string, refreshToken: string, familyId: string): Promise<void> {
@@ -43,12 +43,12 @@ async function issueTokenPair(userId: string, existingFamilyId?: string): Promis
   const accessToken = signJwt(
     { sub: userId, type: 'access' },
     env.JWT_ACCESS_SECRET,
-    env.JWT_ACCESS_EXPIRES_IN
+    env.JWT_ACCESS_EXPIRES_IN || '1h'
   );
   const refreshToken = signJwt(
     { sub: userId, type: 'refresh' },
     env.JWT_REFRESH_SECRET,
-    env.JWT_REFRESH_EXPIRES_IN
+    env.JWT_REFRESH_EXPIRES_IN || '7d'
   );
 
   const familyId = existingFamilyId || uuidv4();
@@ -65,37 +65,37 @@ function sanitizeUser(user: { id: string; phone: string; displayName: string }) 
 }
 
 export async function requestOtp(phone: string) {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await prisma.otpVerification.upsert({
-        where: { phone },
-        update: { code, expiresAt },
-        create: { phone, code, expiresAt }
-    });
+  await prisma.otpVerification.upsert({
+    where: { phone },
+    update: { code, expiresAt },
+    create: { phone, code, expiresAt }
+  });
 
-    logger.info({ phone, code }, 'OTP REQUESTED');
-    return { message: 'OTP sent successfully' };
+  logger.info({ phone, code }, 'OTP REQUESTED');
+  return { message: 'OTP sent successfully' };
 }
 
 export async function verifyOtp(phone: string, code: string) {
-    const verification = await prisma.otpVerification.findUnique({
-        where: { phone }
-    });
+  const verification = await prisma.otpVerification.findUnique({
+    where: { phone }
+  });
 
-    if (!verification || verification.code !== code || verification.expiresAt < new Date()) {
-        throw new AppError(StatusCodes.UNAUTHORIZED, 'Invalid or expired OTP');
-    }
+  if (!verification || verification.code !== code || verification.expiresAt < new Date()) {
+    throw new AppError(StatusCodes.UNAUTHORIZED, 'Invalid or expired OTP');
+  }
 
-    const user = await prisma.user.findUnique({ where: { phone } });
-    await prisma.otpVerification.delete({ where: { phone } });
+  const user = await prisma.user.findUnique({ where: { phone } });
+  await prisma.otpVerification.delete({ where: { phone } });
 
-    if (user) {
-        const tokens = await issueTokenPair(user.id);
-        return { user: sanitizeUser(user), ...tokens, isNewUser: false };
-    }
+  if (user) {
+    const tokens = await issueTokenPair(user.id);
+    return { user: sanitizeUser(user), ...tokens, isNewUser: false };
+  }
 
-    return { isNewUser: true, phone };
+  return { isNewUser: true, phone };
 }
 
 export async function registerUser(input: RegisterInput) {
@@ -162,13 +162,13 @@ export async function refreshAccessToken(refreshToken: string) {
 
   // REUSE DETECTION
   if (storedToken.isUsed) {
-      // Detected reuse! Revoke the entire family
-      await prisma.refreshToken.updateMany({
-          where: { familyId: storedToken.familyId || '' },
-          data: { revokedAt: new Date() }
-      });
-      logger.warn({ userId: payload.sub, familyId: storedToken.familyId }, 'REFRESH TOKEN REUSE DETECTED');
-      throw new AppError(StatusCodes.UNAUTHORIZED, 'Security alert: Token reuse detected');
+    // Detected reuse! Revoke the entire family
+    await prisma.refreshToken.updateMany({
+      where: { familyId: storedToken.familyId || '' },
+      data: { revokedAt: new Date() }
+    });
+    logger.warn({ userId: payload.sub, familyId: storedToken.familyId }, 'REFRESH TOKEN REUSE DETECTED');
+    throw new AppError(StatusCodes.UNAUTHORIZED, 'Security alert: Token reuse detected');
   }
 
   // Mark current token as used
@@ -193,11 +193,11 @@ export async function refreshAccessToken(refreshToken: string) {
 export async function logoutUser(refreshToken: string) {
   const tokenHash = sha256(refreshToken);
   const storedToken = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-  
+
   if (storedToken) {
-      await prisma.refreshToken.updateMany({
-          where: { familyId: storedToken.familyId },
-          data: { revokedAt: new Date() }
-      });
+    await prisma.refreshToken.updateMany({
+      where: { familyId: storedToken.familyId },
+      data: { revokedAt: new Date() }
+    });
   }
 }

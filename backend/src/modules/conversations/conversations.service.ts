@@ -80,18 +80,20 @@ export async function createOrGetDirectConversation(currentUserId: string, other
   return conversation;
 }
 
+import { type ConversationType } from '@prisma/client';
+
 export async function createGroupConversation(creatorId: string, name: string, memberIds: string[], description?: string, avatarUrl?: string) {
   const conversation = await prisma.conversation.create({
     data: {
-      type: 'GROUP',
+      type: 'GROUP' as ConversationType,
       name,
-      description,
-      avatarUrl,
+      ...(description && { description }),
+      ...(avatarUrl && { avatarUrl }),
       creatorId,
       members: {
         create: [
-          { userId: creatorId, role: 'ADMIN' },
-          ...memberIds.map(userId => ({ userId, role: 'MEMBER' }))
+          { userId: creatorId, role: 'ADMIN' as any },
+          ...memberIds.map(userId => ({ userId, role: 'MEMBER' as any }))
         ]
       }
     },
@@ -291,10 +293,10 @@ export async function ensureConversationMembership(conversationId: string, userI
 }
 
 export async function toggleMute(conversationId: string, userId: string, isMuted: boolean) {
-    return prisma.conversationMember.update({
-        where: { conversationId_userId: { conversationId, userId } },
-        data: { isMuted }
-    });
+  return prisma.conversationMember.update({
+    where: { conversationId_userId: { conversationId, userId } },
+    data: { isMuted }
+  });
 }
 
 export async function listUserConversations(userId: string) {
@@ -335,9 +337,20 @@ export async function listUserConversations(userId: string) {
       messages: {
         select: {
           id: true,
+          conversationId: true,
           content: true,
+          status: true,
           createdAt: true,
-          senderId: true
+          senderId: true,
+          isEncrypted: true,
+          ephemeralKey: true,
+          sender: {
+            select: {
+              id: true,
+              displayName: true,
+              phone: true
+            }
+          }
         },
         orderBy: { createdAt: 'desc' },
         take: 1
