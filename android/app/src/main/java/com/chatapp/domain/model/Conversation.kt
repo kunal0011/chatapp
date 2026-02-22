@@ -1,12 +1,19 @@
 package com.chatapp.domain.model
 
-import java.time.Instant
+enum class ConversationType {
+    DIRECT, GROUP
+}
 
 data class Conversation(
     val id: String,
-    val contactName: String,
+    val type: ConversationType = ConversationType.DIRECT,
+    val name: String,
+    val avatarUrl: String? = null,
+    val description: String? = null,
+    val creatorId: String? = null,
+    val memberCount: Int = 0,
+    val isMember: Boolean = true,
     val lastMessage: String? = null,
-    val lastMessageTime: Instant? = null,
-    val lastSeen: Instant? = null,
+    val lastMessageTime: java.time.Instant? = null,
     val isMuted: Boolean = false
 )

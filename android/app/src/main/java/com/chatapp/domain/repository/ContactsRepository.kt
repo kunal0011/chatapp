@@ -12,6 +12,7 @@ interface ContactsRepository {
     suspend fun getDeviceContacts(): List<DeviceContact>
     suspend fun getDirectory(): List<User>
     suspend fun addContact(userId: String): List<User>
+    suspend fun getUserById(userId: String): User
     suspend fun getMyProfile(): User
     suspend fun updateMyProfile(displayName: String): User
     suspend fun updatePushToken(token: String)

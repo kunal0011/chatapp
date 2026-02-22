@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { listConversationMessages, softDeleteMessage, searchMessages } from './messages.service.js';
+import { toggleMute } from '../conversations/conversations.service.js';
 import { AppError } from '../../common/errors/app-error.js';
 
 export async function getConversationMessages(req: Request, res: Response) {
@@ -26,6 +27,18 @@ export async function search(req: Request, res: Response) {
         throw new AppError(StatusCodes.BAD_REQUEST, 'Query parameter q is required');
     }
 
-    const messages = await searchMessages(req.auth!.userId, q.trim());
-    res.status(StatusCodes.OK).json({ messages });
+    const result = await searchMessages(req.auth!.userId, q.trim());
+    res.status(StatusCodes.OK).json(result);
+}
+
+export async function mute(req: Request, res: Response) {
+    const { conversationId } = req.params;
+    await toggleMute(conversationId, req.auth!.userId, true);
+    res.status(StatusCodes.OK).json({ message: 'Conversation muted' });
+}
+
+export async function unmute(req: Request, res: Response) {
+    const { conversationId } = req.params;
+    await toggleMute(conversationId, req.auth!.userId, false);
+    res.status(StatusCodes.OK).json({ message: 'Conversation unmuted' });
 }

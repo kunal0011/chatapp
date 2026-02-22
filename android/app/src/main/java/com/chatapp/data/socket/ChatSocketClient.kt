@@ -7,8 +7,6 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import io.socket.client.IO
 import io.socket.client.Socket
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +15,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
 data class SocketReadEvent(
     @SerializedName("conversationId") val conversationId: String,
@@ -62,13 +62,13 @@ class ChatSocketClient @Inject constructor(
             val created = IO.socket(BuildConfig.SOCKET_URL, options)
             created.on(Socket.EVENT_CONNECT) { connectionState.value = true }
             created.on(Socket.EVENT_DISCONNECT) { connectionState.value = false }
-            
+
             created.on("message:new") { args ->
                 if (args.isNotEmpty()) {
                     parseIncomingMessage(args[0])?.let { messageEvents.tryEmit(it) }
                 }
             }
-            
+
             created.on("message:ack") { args ->
                 if (args.isNotEmpty()) {
                     runCatching {

@@ -8,13 +8,13 @@ import com.chatapp.domain.repository.ChatRepository
 import com.chatapp.domain.repository.ContactsRepository
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import javax.inject.Inject
 
 data class AppSessionState(
     val loading: Boolean = true,
@@ -39,7 +39,7 @@ class AppViewModel @Inject constructor(
                     loading = false,
                     authenticated = isAuthenticated
                 )
-                
+
                 if (isAuthenticated && session != null) {
                     registerPushToken()
                 }

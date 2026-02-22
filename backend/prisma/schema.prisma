@@ -71,6 +71,10 @@ model UserContact {
 model Conversation {
   id             String               @id @default(cuid())
   type           ConversationType     @default(DIRECT)
+  name           String?
+  description    String?
+  avatarUrl      String?
+  creatorId      String?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   members        ConversationMember[]
@@ -80,13 +84,16 @@ model Conversation {
 }
 
 model ConversationMember {
-  id               String         @id @default(cuid())
-  conversationId   String
-  userId           String
-  isMuted          Boolean        @default(false)
-  joinedAt         DateTime       @default(now())
-  conversation     Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String         @id @default(cuid())
+  conversationId    String
+  userId            String
+  role              MemberRole     @default(MEMBER)
+  isMuted           Boolean        @default(false)
+  lastReadMessageId String?
+  joinedAt          DateTime       @default(now())
+  conversation      Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage   Message?       @relation("LastRead", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
 
   @@unique([conversationId, userId])
   @@index([userId])
@@ -98,6 +105,7 @@ model Message {
   senderId         String
   parentId         String?
   content          String
+  type             MessageType    @default(USER)
   status           MessageStatus  @default(SENT)
   isDeleted        Boolean        @default(false)
   isEdited         Boolean        @default(false)
@@ -107,8 +115,19 @@ model Message {
   parent           Message?       @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
   replies          Message[]      @relation("Replies")
   reactions        Reaction[]
+  readByMembers    ConversationMember[] @relation("LastRead")
 
   @@index([conversationId, createdAt])
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum MessageType {
+  USER
+  SYSTEM
 }
 
 model Reaction {
@@ -148,4 +167,5 @@ model RefreshToken {
 
 enum ConversationType {
   DIRECT
+  GROUP
 }

@@ -5,11 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chatapp.domain.model.ChatMessage
-import com.chatapp.domain.model.MessageStatus
 import com.chatapp.domain.repository.ChatRepository
 import com.chatapp.domain.repository.ContactsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 data class ChatUiState(
     val conversationId: String = "",
@@ -26,6 +25,9 @@ data class ChatUiState(
     val currentUserId: String? = null,
     val isConnected: Boolean = false,
     val isOtherTyping: Boolean = false,
+    val isGroup: Boolean = false,
+    val memberCount: Int = 0,
+    val isMember: Boolean = true,
     val loading: Boolean = true,
     val loadingOlder: Boolean = false,
     val sending: Boolean = false,
@@ -62,37 +64,60 @@ class ChatViewModel @Inject constructor(
         initialize()
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            runCatching {
+                chatRepository.fetchHistory(conversationId = conversationId, limit = 40)
+            }
+        }
+    }
+
     private fun initialize() {
         viewModelScope.launch {
             val currentUserId = chatRepository.currentUserIdOrNull()
             _state.update { it.copy(currentUserId = currentUserId) }
 
-            // 1. Observe local messages
+            // 1. Observe conversation details (for membership status and name updates)
             launch {
-                chatRepository.observeMessages(conversationId).collectLatest { list ->
-                    val otherId = list.firstOrNull { it.senderId != currentUserId }?.senderId
-                    _state.update { 
+                chatRepository.observeConversation(conversationId).collectLatest { conv ->
+                    android.util.Log.d("ChatViewModel", "Received conversation update for $conversationId: name=${conv?.name}")
+                    _state.update {
                         it.copy(
-                            messages = list, 
-                            loading = false, // Stop loading immediately when DB observation starts
-                            otherUserId = otherId 
-                        ) 
+                            contactName = conv?.name ?: it.contactName,
+                            isGroup = conv?.type == com.chatapp.domain.model.ConversationType.GROUP,
+                            memberCount = conv?.memberCount ?: 0,
+                            isMember = conv?.isMember ?: true
+                        )
                     }
                 }
             }
 
-            // 2. Perform network sync and start observers
+            // 2. Observe local messages
+            launch {
+                chatRepository.observeMessages(conversationId).collectLatest { list ->
+                    val otherId = list.firstOrNull { it.senderId != currentUserId }?.senderId
+                    _state.update {
+                        it.copy(
+                            messages = list,
+                            loading = false, // Stop loading immediately when DB observation starts
+                            otherUserId = otherId
+                        )
+                    }
+                }
+            }
+
+            // 3. Perform network sync and start observers
             runCatching {
                 chatRepository.connectRealtime()
                 chatRepository.joinConversation(conversationId)
                 chatRepository.markAsRead(conversationId)
-                
+
                 // Start socket event listeners
                 startObserver()
                 startReadObserver()
                 startTypingObserver()
                 startConnectionObserver()
-                
+
                 // Initial history fetch
                 val cursor = chatRepository.fetchHistory(conversationId = conversationId, limit = 40)
                 _state.update { it.copy(nextCursor = cursor, isConnected = true) }
@@ -147,11 +172,11 @@ class ChatViewModel @Inject constructor(
 
     private val _messageInput = MutableStateFlow("")
     val messageInput: StateFlow<String> = _messageInput.asStateFlow()
-    
+
     fun onMessageInputChangeNew(value: String) {
         val oldVal = _messageInput.value
         _messageInput.value = value.take(4000)
-        
+
         if (value.isNotEmpty() && oldVal.isEmpty()) {
             publishTyping(true)
         } else if (value.isEmpty() && oldVal.isNotEmpty()) {
@@ -197,12 +222,12 @@ class ChatViewModel @Inject constructor(
     fun sendMessage() {
         val text = _messageInput.value.trim()
         if (text.isEmpty()) return
-        
+
         viewModelScope.launch {
             publishTyping(false)
             val editingId = _state.value.editingMessage?.id
             val parentId = _state.value.replyingTo?.id
-            
+
             _state.update { it.copy(sending = true, replyingTo = null, editingMessage = null) }
             val clientTempId = "local-${System.currentTimeMillis()}"
 

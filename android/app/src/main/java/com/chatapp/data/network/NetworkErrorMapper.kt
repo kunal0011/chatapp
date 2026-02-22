@@ -1,10 +1,10 @@
 package com.chatapp.data.network
 
+import org.json.JSONObject
+import retrofit2.HttpException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import org.json.JSONObject
-import retrofit2.HttpException
 
 object NetworkErrorMapper {
     fun toUserMessage(throwable: Throwable, fallback: String): String {

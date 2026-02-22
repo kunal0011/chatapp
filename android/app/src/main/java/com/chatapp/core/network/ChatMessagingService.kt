@@ -12,11 +12,11 @@ import com.chatapp.domain.repository.ContactsRepository
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ChatMessagingService : FirebaseMessagingService() {
@@ -36,7 +36,7 @@ class ChatMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        
+
         val title = message.notification?.title ?: message.data["title"] ?: "New Message"
         val body = message.notification?.body ?: message.data["body"] ?: ""
         val conversationId = message.data["conversationId"]

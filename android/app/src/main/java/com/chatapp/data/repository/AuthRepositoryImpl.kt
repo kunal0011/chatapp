@@ -1,7 +1,11 @@
 package com.chatapp.data.repository
 
 import com.chatapp.data.api.AuthApi
-import com.chatapp.data.dto.*
+import com.chatapp.data.dto.AuthRequest
+import com.chatapp.data.dto.OtpRequest
+import com.chatapp.data.dto.OtpVerifyRequest
+import com.chatapp.data.dto.RefreshRequest
+import com.chatapp.data.dto.toSession
 import com.chatapp.data.store.SessionStore
 import com.chatapp.domain.model.Session
 import com.chatapp.domain.repository.AuthRepository

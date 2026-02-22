@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.chatapp.domain.model.User
 import com.chatapp.domain.repository.ContactsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -13,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 data class ContactsUiState(
     val loading: Boolean = true,
@@ -25,7 +25,8 @@ data class ContactsUiState(
 
 data class NavigateToChat(
     val conversationId: String,
-    val contactName: String
+    val contactName: String,
+    val otherUserId: String? = null
 )
 
 @HiltViewModel

@@ -8,6 +8,11 @@ enum class MessageStatus {
     READ
 }
 
+enum class MessageType {
+    USER,
+    SYSTEM
+}
+
 data class MessageReaction(
     val userId: String,
     val emoji: String
@@ -19,6 +24,7 @@ data class ChatMessage(
     val senderId: String,
     val senderName: String,
     val content: String,
+    val type: MessageType = MessageType.USER,
     val createdAt: Instant,
     val status: MessageStatus = MessageStatus.SENT,
     val isDeleted: Boolean = false,

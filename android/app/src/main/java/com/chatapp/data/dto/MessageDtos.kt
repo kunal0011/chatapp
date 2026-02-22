@@ -11,11 +11,18 @@ data class MessagesResponse(
     @SerializedName("nextCursor") val nextCursor: String?
 )
 
+data class UnifiedSearchResponse(
+    @SerializedName("messages") val messages: List<ApiMessage>,
+    @SerializedName("contacts") val contacts: List<ApiUser>,
+    @SerializedName("groups") val groups: List<ApiConversation>
+)
+
 data class ApiMessage(
     @SerializedName("id") val id: String,
     @SerializedName("conversationId") val conversationId: String,
     @SerializedName("senderId") val senderId: String,
     @SerializedName("content") val content: String,
+    @SerializedName("type") val type: String? = null,
     @SerializedName("status") val status: String,
     @SerializedName("isDeleted") val isDeleted: Boolean = false,
     @SerializedName("isEdited") val isEdited: Boolean = false,
@@ -44,12 +51,18 @@ data class SocketMessageEnvelope(
 )
 
 fun ApiMessage.toDomain(): ChatMessage {
+    val messageType = when (type) {
+        "SYSTEM" -> com.chatapp.domain.model.MessageType.SYSTEM
+        else -> com.chatapp.domain.model.MessageType.USER
+    }
+
     return ChatMessage(
         id = id,
         conversationId = conversationId,
         senderId = senderId,
         senderName = sender.displayName,
         content = content,
+        type = messageType,
         createdAt = Instant.parse(createdAt),
         isDeleted = isDeleted,
         isEdited = isEdited,

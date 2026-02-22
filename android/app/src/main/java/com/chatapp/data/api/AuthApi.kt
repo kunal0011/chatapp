@@ -1,6 +1,12 @@
 package com.chatapp.data.api
 
-import com.chatapp.data.dto.*
+import com.chatapp.data.dto.AuthRequest
+import com.chatapp.data.dto.AuthResponse
+import com.chatapp.data.dto.OtpRequest
+import com.chatapp.data.dto.OtpResponse
+import com.chatapp.data.dto.OtpVerifyRequest
+import com.chatapp.data.dto.OtpVerifyResponse
+import com.chatapp.data.dto.RefreshRequest
 import retrofit2.http.Body
 import retrofit2.http.POST
 

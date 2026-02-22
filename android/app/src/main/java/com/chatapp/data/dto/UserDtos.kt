@@ -1,6 +1,5 @@
 package com.chatapp.data.dto
 
-import com.chatapp.domain.model.User
 import com.google.gson.annotations.SerializedName
 
 data class ContactsResponse(

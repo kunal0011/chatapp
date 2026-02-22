@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import com.chatapp.data.local.ChatDatabase
 import com.chatapp.data.local.dao.ConversationDao
+import com.chatapp.data.local.dao.MemberDao
 import com.chatapp.data.local.dao.MessageDao
 import dagger.Module
 import dagger.Provides
@@ -32,4 +33,7 @@ object DatabaseModule {
 
     @Provides
     fun provideMessageDao(db: ChatDatabase): MessageDao = db.messageDao()
+
+    @Provides
+    fun provideMemberDao(db: ChatDatabase): MemberDao = db.memberDao()
 }

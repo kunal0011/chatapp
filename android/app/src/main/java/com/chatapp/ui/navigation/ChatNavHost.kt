@@ -20,8 +20,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.chatapp.ui.screens.auth.AuthScreen
+import com.chatapp.ui.screens.chat.AddMembersScreen
 import com.chatapp.ui.screens.chat.ChatScreen
 import com.chatapp.ui.screens.chat.ConversationsScreen
+import com.chatapp.ui.screens.chat.CreateGroupScreen
+import com.chatapp.ui.screens.chat.GroupInfoScreen
+import com.chatapp.ui.screens.contacts.ContactInfoScreen
 import com.chatapp.ui.screens.contacts.DirectoryScreen
 import com.chatapp.ui.screens.settings.SettingsScreen
 import com.chatapp.ui.viewmodel.AppViewModel
@@ -76,7 +80,22 @@ fun ChatNavHost() {
                 onNavigateToSettings = {
                     navController.navigate(Routes.SETTINGS)
                 },
+                onNavigateToCreateGroup = {
+                    navController.navigate(Routes.CREATE_GROUP)
+                },
                 onLogout = appViewModel::logout
+            )
+        }
+
+        composable(Routes.CREATE_GROUP) {
+            CreateGroupScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToChat = { conversationId, contactName ->
+                    val encodedName = Uri.encode(contactName)
+                    navController.navigate(Routes.chatDestination(conversationId, encodedName)) {
+                        popUpTo(Routes.CREATE_GROUP) { inclusive = true }
+                    }
+                }
             )
         }
 
@@ -106,7 +125,54 @@ fun ChatNavHost() {
                 navArgument("contactName") { type = NavType.StringType }
             )
         ) {
-            ChatScreen(onBack = { navController.popBackStack() })
+            ChatScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToGroupInfo = { conversationId ->
+                    navController.navigate(Routes.groupInfoDestination(conversationId))
+                },
+                onNavigateToContactInfo = { userId ->
+                    navController.navigate(Routes.contactInfoDestination(userId))
+                }
+            )
+        }
+
+        composable(
+            route = Routes.GROUP_INFO,
+            arguments = listOf(
+                navArgument("conversationId") { type = NavType.StringType }
+            )
+        ) {
+            GroupInfoScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToAddMembers = { conversationId ->
+                    navController.navigate(Routes.addMembersDestination(conversationId))
+                },
+                onExitGroup = {
+                    navController.popBackStack(Routes.CONTACTS, inclusive = false)
+                }
+            )
+        }
+
+        composable(
+            route = Routes.ADD_MEMBERS,
+            arguments = listOf(
+                navArgument("conversationId") { type = NavType.StringType }
+            )
+        ) {
+            AddMembersScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Routes.CONTACT_INFO,
+            arguments = listOf(
+                navArgument("userId") { type = NavType.StringType }
+            )
+        ) {
+            ContactInfoScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }

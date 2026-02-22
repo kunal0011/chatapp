@@ -8,7 +8,12 @@ async function main() {
   const users = [
     { phone: '+15550000001', displayName: 'Alice', password: 'Password123!' },
     { phone: '+15550000002', displayName: 'Bob', password: 'Password123!' },
-    { phone: '+15550000003', displayName: 'Charlie', password: 'Password123!' }
+    { phone: '+15550000003', displayName: 'Charlie', password: 'Password123!' },
+    { phone: '+919975745674', displayName: 'Kunal', password: 'Password123!' },
+    { phone: '+919905455920', displayName: 'Nandini', password: 'Password123!' },
+    { phone: '+15550000004', displayName: 'Riya', password: 'Password123!' },
+    { phone: '+15550000005', displayName: 'Sita', password: 'Password123!' },
+    { phone: '+15550000006', displayName: 'Gita', password: 'Password123!' },
   ];
 
   for (const user of users) {

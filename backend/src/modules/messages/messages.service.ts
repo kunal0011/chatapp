@@ -9,6 +9,7 @@ const messageSelect = {
     id: true,
     content: true,
     createdAt: true,
+    type: true,
     status: true,
     isDeleted: true,
     isEdited: true,
@@ -66,7 +67,9 @@ export async function listConversationMessages(data: {
 }
 
 export async function searchMessages(userId: string, query: string) {
-    return prisma.message.findMany({
+    console.log(`[Search] User ${userId} searching for: "${query}"`);
+
+    const messages = await prisma.message.findMany({
         where: {
             conversation: {
                 members: {
@@ -84,8 +87,71 @@ export async function searchMessages(userId: string, query: string) {
             reactions: true
         },
         orderBy: { createdAt: 'desc' },
-        take: 50
+        take: 20
     });
+
+    const contacts = await prisma.user.findMany({
+        where: {
+            id: { not: userId },
+            OR: [
+                { displayName: { contains: query, mode: 'insensitive' } },
+                { phone: { contains: query, mode: 'insensitive' } }
+            ]
+        },
+        select: {
+            id: true,
+            displayName: true,
+            phone: true,
+            lastSeen: true
+        },
+        take: 10
+    });
+
+    const groups = await prisma.conversation.findMany({
+        where: {
+            members: { some: { userId } },
+            OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { 
+                    members: { 
+                        some: { 
+                            user: { displayName: { contains: query, mode: 'insensitive' } } 
+                        } 
+                    } 
+                }
+            ]
+        },
+        include: {
+            members: {
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            displayName: true,
+                            phone: true,
+                            lastSeen: true
+                        }
+                    }
+                }
+            },
+            messages: {
+                select: {
+                    id: true,
+                    content: true,
+                    createdAt: true,
+                    senderId: true
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 1
+            }
+        },
+        take: 10
+    });
+
+    console.log(`[Search] Step Group: Found ${groups.length} matches for "${query}"`);
+
+    console.log(`[Search] Found ${messages.length} messages, ${contacts.length} contacts, and ${groups.length} groups`);
+    return { messages, contacts, groups };
 }
 
 export async function persistMessage(data: { 

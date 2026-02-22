@@ -1,34 +1,61 @@
 package com.chatapp.data.local.entities
 
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.chatapp.domain.model.Conversation
+import com.chatapp.domain.model.ConversationType
 import java.time.Instant
 
-@Entity(tableName = "conversations")
+@Entity(
+    tableName = "conversations",
+    primaryKeys = ["id", "ownerId"]
+)
 data class ConversationEntity(
-    @PrimaryKey val id: String,
-    val contactName: String,
+    val id: String,
+    val ownerId: String, // Partition data by logged-in user
+    val type: String, // DIRECT or GROUP
+    val name: String,
+    val avatarUrl: String? = null,
+    val description: String? = null,
+    val creatorId: String? = null,
+    val memberCount: Int = 0,
+    val isMember: Boolean = true,
     val lastMessage: String?,
     val lastMessageTime: Long?,
-    val lastSeen: Long? = null,
     val isMuted: Boolean = false
 )
 
-fun ConversationEntity.toDomain() = Conversation(
-    id = id,
-    contactName = contactName,
-    lastMessage = lastMessage,
-    lastMessageTime = lastMessageTime?.let { Instant.ofEpochMilli(it) },
-    lastSeen = lastSeen?.let { Instant.ofEpochMilli(it) },
-    isMuted = isMuted
-)
+fun ConversationEntity.toDomain(): Conversation {
+    val conversationType = when (type) {
+        "GROUP" -> ConversationType.GROUP
+        else -> ConversationType.DIRECT
+    }
 
-fun Conversation.toEntity() = ConversationEntity(
+    return Conversation(
+        id = id,
+        type = conversationType,
+        name = name,
+        avatarUrl = avatarUrl,
+        description = description,
+        creatorId = creatorId,
+        memberCount = memberCount,
+        isMember = isMember,
+        lastMessage = lastMessage,
+        lastMessageTime = lastMessageTime?.let { Instant.ofEpochMilli(it) },
+        isMuted = isMuted
+    )
+}
+
+fun Conversation.toEntity(ownerId: String) = ConversationEntity(
     id = id,
-    contactName = contactName,
+    ownerId = ownerId,
+    type = type.name,
+    name = name,
+    avatarUrl = avatarUrl,
+    description = description,
+    creatorId = creatorId,
+    memberCount = memberCount,
+    isMember = isMember,
     lastMessage = lastMessage,
     lastMessageTime = lastMessageTime?.toEpochMilli(),
-    lastSeen = lastSeen?.toEpochMilli(),
     isMuted = isMuted
 )

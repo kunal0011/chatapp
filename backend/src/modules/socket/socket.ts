@@ -2,8 +2,10 @@ import type { Server as HttpServer } from 'node:http';
 import { StatusCodes } from 'http-status-codes';
 import jwt from 'jsonwebtoken';
 import { Server, type Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { pubClient, subClient, redis } from '../../config/redis.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { ensureConversationMembership } from '../conversations/conversations.service.js';
 import { persistMessage, markConversationAsRead, editMessage, softDeleteMessage, addOrUpdateReaction } from '../messages/messages.service.js';
@@ -13,6 +15,22 @@ interface AuthedSocket extends Socket {
   data: {
     userId: string;
   };
+}
+
+// Key for online users set in Redis
+const REDIS_ONLINE_USERS_KEY = 'chat:online_users';
+
+async function addOnlineUser(userId: string) {
+    await redis.sadd(REDIS_ONLINE_USERS_KEY, userId);
+}
+
+async function removeOnlineUser(userId: string) {
+    await redis.srem(REDIS_ONLINE_USERS_KEY, userId);
+}
+
+export async function isUserOnline(userId: string): Promise<boolean> {
+    const result = await redis.sismember(REDIS_ONLINE_USERS_KEY, userId);
+    return result === 1;
 }
 
 interface MessageSendPayload {
@@ -44,8 +62,6 @@ interface TypingPayload {
   conversationId: string;
 }
 
-const onlineUsers = new Set<string>();
-
 function getTokenFromSocket(socket: Socket): string {
   const authToken = socket.handshake.auth.token;
   if (typeof authToken === 'string' && authToken.length > 0) {
@@ -75,7 +91,8 @@ export function registerSocketServer(httpServer: HttpServer) {
     cors: {
       origin: env.corsOrigins,
       credentials: true
-    }
+    },
+    adapter: createAdapter(pubClient, subClient)
   });
 
   io.use((socket, next) => {
@@ -92,7 +109,7 @@ export function registerSocketServer(httpServer: HttpServer) {
     const authedSocket = socket as AuthedSocket;
     const userId = authedSocket.data.userId;
     
-    onlineUsers.add(userId);
+    await addOnlineUser(userId);
     await updateLastSeen(userId);
     logger.info({ userId, socketId: socket.id }, 'Socket connected');
 
@@ -100,6 +117,7 @@ export function registerSocketServer(httpServer: HttpServer) {
       try {
         await ensureConversationMembership(conversationId, userId);
         await socket.join(conversationId);
+        logger.info({ userId, conversationId, socketId: socket.id }, 'User joined conversation room');
         
         await markConversationAsRead(conversationId, userId);
         
@@ -153,6 +171,7 @@ export function registerSocketServer(httpServer: HttpServer) {
           parentId: payload.parentId
         });
 
+        logger.info({ userId, conversationId: payload.conversationId, messageId: message.id }, 'Broadcasting new message to room');
         io.to(payload.conversationId).emit('message:new', { message });
         socket.emit('message:ack', {
           clientTempId: payload.clientTempId,
@@ -198,7 +217,7 @@ export function registerSocketServer(httpServer: HttpServer) {
     });
 
     socket.on('disconnect', async (reason) => {
-      onlineUsers.delete(userId);
+      await removeOnlineUser(userId);
       await updateLastSeen(userId);
       logger.info({ userId, socketId: socket.id, reason }, 'Socket disconnected');
     });

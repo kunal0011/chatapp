@@ -14,6 +14,12 @@ export async function getMe(req: Request, res: Response) {
   res.status(StatusCodes.OK).json({ user });
 }
 
+export async function getUser(req: Request, res: Response) {
+  const user = await getUserById(req.params.userId);
+  if (!user) throw new AppError(StatusCodes.NOT_FOUND, 'User not found');
+  res.status(StatusCodes.OK).json({ user });
+}
+
 export async function updateMe(req: Request, res: Response) {
   const { displayName } = req.body;
   if (displayName !== undefined && (typeof displayName !== 'string' || displayName.trim().length === 0)) {

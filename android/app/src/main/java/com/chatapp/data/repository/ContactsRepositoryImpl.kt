@@ -4,17 +4,19 @@ import android.app.Application
 import android.provider.ContactsContract
 import com.chatapp.data.api.ConversationsApi
 import com.chatapp.data.api.UsersApi
-import com.chatapp.data.dto.*
+import com.chatapp.data.dto.DirectConversationRequest
+import com.chatapp.data.dto.SyncContactsRequest
+import com.chatapp.data.dto.toDomain
 import com.chatapp.data.network.NetworkErrorMapper
 import com.chatapp.data.network.SessionGateway
 import com.chatapp.domain.model.Conversation
 import com.chatapp.domain.model.DeviceContact
 import com.chatapp.domain.model.User
 import com.chatapp.domain.repository.ContactsRepository
-import javax.inject.Inject
-import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 @Singleton
 class ContactsRepositoryImpl @Inject constructor(
@@ -56,14 +58,14 @@ class ContactsRepositoryImpl @Inject constructor(
             val myPhone = sessionGateway.requireSession().phone.replace(Regex("[^0-9]"), "").takeLast(10)
             val localContacts = fetchDeviceContacts()
             if (localContacts.isEmpty()) return emptyList()
-            
+
             val registeredUsers = discoverContactsFromDevice()
             val registeredMap = registeredUsers.associateBy { it.phone.replace(Regex("[^0-9]"), "").takeLast(10) }
-            
+
             localContacts
-                .filter { contact -> 
+                .filter { contact ->
                     // Filter out own number
-                    contact.phone.replace(Regex("[^0-9]"), "").takeLast(10) != myPhone 
+                    contact.phone.replace(Regex("[^0-9]"), "").takeLast(10) != myPhone
                 }
                 .map { local ->
                     val normalizedLocal = local.phone.replace(Regex("[^0-9]"), "").takeLast(10)
@@ -113,6 +115,14 @@ class ContactsRepositoryImpl @Inject constructor(
             usersApi.addContactByUserId(mapOf("contactId" to userId)).contacts.map { it.toDomain() }
         }.getOrElse { throwable ->
             throw IllegalStateException(NetworkErrorMapper.toUserMessage(throwable, "Failed to add contact"), throwable)
+        }
+    }
+
+    override suspend fun getUserById(userId: String): User {
+        return runCatching<User> {
+            usersApi.getUserById(userId).user.toDomain()
+        }.getOrElse { throwable ->
+            throw IllegalStateException(NetworkErrorMapper.toUserMessage(throwable, "Failed to load user info"), throwable)
         }
     }
 

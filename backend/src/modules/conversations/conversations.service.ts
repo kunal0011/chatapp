@@ -80,6 +80,200 @@ export async function createOrGetDirectConversation(currentUserId: string, other
   return conversation;
 }
 
+export async function createGroupConversation(creatorId: string, name: string, memberIds: string[], description?: string, avatarUrl?: string) {
+  const conversation = await prisma.conversation.create({
+    data: {
+      type: 'GROUP',
+      name,
+      description,
+      avatarUrl,
+      creatorId,
+      members: {
+        create: [
+          { userId: creatorId, role: 'ADMIN' },
+          ...memberIds.map(userId => ({ userId, role: 'MEMBER' }))
+        ]
+      }
+    },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              phone: true,
+              lastSeen: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return conversation;
+}
+
+export async function addGroupMembers(conversationId: string, adminId: string, memberIds: string[]) {
+  // Check if requester is admin
+  const adminMembership = await prisma.conversationMember.findUnique({
+    where: { conversationId_userId: { conversationId, userId: adminId } }
+  });
+
+  if (!adminMembership || adminMembership.role !== 'ADMIN') {
+    throw new AppError(StatusCodes.FORBIDDEN, 'Only admins can add members');
+  }
+
+  const usersToAdd = await prisma.user.findMany({
+    where: { id: { in: memberIds } },
+    select: { id: true, displayName: true }
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.conversationMember.createMany({
+      data: memberIds.map(userId => ({
+        conversationId,
+        userId,
+        role: 'MEMBER'
+      })),
+      skipDuplicates: true
+    });
+
+    // Create system messages for each successfully added user
+    for (const user of usersToAdd) {
+      await tx.message.create({
+        data: {
+          conversationId,
+          senderId: adminId, // The admin who added them
+          content: `${user.displayName} joined the group`,
+          type: 'SYSTEM',
+          status: 'SENT'
+        }
+      });
+    }
+
+    return result;
+  });
+}
+
+export async function removeGroupMember(conversationId: string, requesterId: string, userIdToRemove: string) {
+  const requesterMembership = await prisma.conversationMember.findUnique({
+    where: { conversationId_userId: { conversationId, userId: requesterId } }
+  });
+
+  if (!requesterMembership) {
+    throw new AppError(StatusCodes.FORBIDDEN, 'No access to this conversation');
+  }
+
+  // Users can remove themselves, or admins can remove others
+  if (requesterId !== userIdToRemove && requesterMembership.role !== 'ADMIN') {
+    throw new AppError(StatusCodes.FORBIDDEN, 'Only admins can remove members');
+  }
+
+  const userToRemove = await prisma.user.findUnique({ where: { id: userIdToRemove } });
+
+  // Use a transaction to ensure member removal and system message creation happen together
+  return prisma.$transaction(async (tx) => {
+    const deleted = await tx.conversationMember.delete({
+      where: { conversationId_userId: { conversationId, userId: userIdToRemove } }
+    });
+
+    if (userToRemove) {
+      await tx.message.create({
+        data: {
+          conversationId,
+          senderId: userIdToRemove, // Track who the system message is about
+          content: `${userToRemove.displayName} left the group`,
+          type: 'SYSTEM',
+          status: 'SENT'
+        }
+      });
+    }
+
+    return deleted;
+  });
+}
+
+export async function updateGroupMetadata(conversationId: string, adminId: string, data: { name?: string; description?: string; avatarUrl?: string }) {
+  const adminMembership = await prisma.conversationMember.findUnique({
+    where: { conversationId_userId: { conversationId, userId: adminId } }
+  });
+
+  if (!adminMembership || adminMembership.role !== 'ADMIN') {
+    throw new AppError(StatusCodes.FORBIDDEN, 'Only admins can update group info');
+  }
+
+  return prisma.conversation.update({
+    where: { id: conversationId },
+    data,
+    include: {
+      members: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              phone: true,
+              lastSeen: true
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+export async function updateMemberRole(conversationId: string, requesterId: string, targetUserId: string, newRole: 'ADMIN' | 'MEMBER') {
+  const requesterMembership = await prisma.conversationMember.findUnique({
+    where: { conversationId_userId: { conversationId, userId: requesterId } }
+  });
+
+  if (!requesterMembership || requesterMembership.role !== 'ADMIN') {
+    throw new AppError(StatusCodes.FORBIDDEN, 'Only admins can change roles');
+  }
+
+  const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.conversationMember.update({
+      where: { conversationId_userId: { conversationId, userId: targetUserId } },
+      data: { role: newRole }
+    });
+
+    if (targetUser) {
+      await tx.message.create({
+        data: {
+          conversationId,
+          senderId: requesterId,
+          content: `${targetUser.displayName} was ${newRole === 'ADMIN' ? 'promoted to Admin' : 'demoted to Member'}`,
+          type: 'SYSTEM'
+        }
+      });
+    }
+
+    return updated;
+  });
+}
+
+export async function getConversationMembers(conversationId: string, userId: string) {
+  await ensureConversationMembership(conversationId, userId);
+
+  return prisma.conversationMember.findMany({
+    where: { conversationId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          displayName: true,
+          phone: true,
+          lastSeen: true
+        }
+      }
+    },
+    orderBy: { joinedAt: 'asc' }
+  });
+}
+
 export async function ensureConversationMembership(conversationId: string, userId: string) {
   const membership = await prisma.conversationMember.findUnique({
     where: {
@@ -114,9 +308,15 @@ export async function listUserConversations(userId: string) {
     },
     select: {
       id: true,
+      type: true,
+      name: true,
+      avatarUrl: true,
+      description: true,
+      creatorId: true,
       updatedAt: true,
       members: {
         select: {
+          role: true,
           isMuted: true,
           user: {
             select: {

@@ -1,11 +1,23 @@
 package com.chatapp.data.api
 
-import com.chatapp.data.dto.*
-import retrofit2.http.*
+import com.chatapp.data.dto.ApiPreKeyBundle
+import com.chatapp.data.dto.ContactsResponse
+import com.chatapp.data.dto.KeyUploadRequest
+import com.chatapp.data.dto.SyncContactsRequest
+import com.chatapp.data.dto.UserResponse
+import retrofit2.http.Body
+import retrofit2.http.DELETE
+import retrofit2.http.GET
+import retrofit2.http.PATCH
+import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface UsersApi {
     @GET("users/me")
     suspend fun getCurrentProfile(): UserResponse
+
+    @GET("users/{userId}")
+    suspend fun getUserById(@Path("userId") userId: String): UserResponse
 
     @PATCH("users/me")
     suspend fun updateProfile(@Body request: Map<String, String>): UserResponse

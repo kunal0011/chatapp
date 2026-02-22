@@ -5,6 +5,7 @@ import androidx.room.PrimaryKey
 import com.chatapp.domain.model.ChatMessage
 import com.chatapp.domain.model.MessageReaction
 import com.chatapp.domain.model.MessageStatus
+import com.chatapp.domain.model.MessageType
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.time.Instant
@@ -16,6 +17,7 @@ data class MessageEntity(
     val senderId: String,
     val senderName: String,
     val content: String,
+    val type: String, // USER, SYSTEM
     val createdAt: Long,
     val status: String,
     val isDeleted: Boolean = false,
@@ -28,8 +30,8 @@ data class MessageEntity(
 
 fun MessageEntity.toDomain(): ChatMessage {
     val gson = Gson()
-    val type = object : TypeToken<List<MessageReaction>>() {}.type
-    val reactions: List<MessageReaction> = if (reactionsJson != null) gson.fromJson(reactionsJson, type) else emptyList()
+    val typeToken = object : TypeToken<List<MessageReaction>>() {}.type
+    val reactions: List<MessageReaction> = if (reactionsJson != null) gson.fromJson(reactionsJson, typeToken) else emptyList()
     
     return ChatMessage(
         id = id,
@@ -37,6 +39,7 @@ fun MessageEntity.toDomain(): ChatMessage {
         senderId = senderId,
         senderName = senderName,
         content = content,
+        type = try { MessageType.valueOf(type) } catch (e: Exception) { MessageType.USER },
         createdAt = Instant.ofEpochMilli(createdAt),
         status = MessageStatus.valueOf(status),
         isDeleted = isDeleted,
@@ -58,6 +61,7 @@ fun ChatMessage.toEntity(): MessageEntity {
         senderId = senderId,
         senderName = senderName,
         content = content,
+        type = type.name,
         createdAt = createdAt.toEpochMilli(),
         status = status.name,
         isDeleted = isDeleted,

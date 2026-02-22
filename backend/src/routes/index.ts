@@ -9,4 +9,4 @@ export const apiRouter = Router();
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/conversations', conversationsRouter);
-apiRouter.use('/conversations', messagesRouter);
+apiRouter.use('/messages', messagesRouter);

@@ -3,23 +3,61 @@ package com.chatapp.ui.screens.chat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -34,6 +72,7 @@ fun ConversationsScreen(
     onNavigateToChat: (conversationId: String, contactName: String) -> Unit,
     onNavigateToDirectory: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToCreateGroup: () -> Unit,
     onLogout: () -> Unit,
     viewModel: ConversationsViewModel = hiltViewModel()
 ) {
@@ -64,9 +103,15 @@ fun ConversationsScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "Chats", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            text = "${state.conversations.size} active chats",
+                            text = "NEXUS", 
+                            style = MaterialTheme.typography.headlineLarge, 
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 4.sp
+                        )
+                        Text(
+                            text = "${state.conversations.size} active sessions",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
@@ -88,6 +133,14 @@ fun ConversationsScreen(
                                     onNavigateToDirectory()
                                 },
                                 leadingIcon = { Icon(Icons.Default.PersonAdd, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New Group") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onNavigateToCreateGroup()
+                                },
+                                leadingIcon = { Icon(Icons.Default.GroupAdd, contentDescription = null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
@@ -137,7 +190,11 @@ fun ConversationsScreen(
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else if (state.conversations.isEmpty() && state.searchResults.isEmpty() && !state.loading) {
+            } else if (state.conversations.isEmpty() &&
+                state.searchResults.contacts.isEmpty() &&
+                state.searchResults.messages.isEmpty() &&
+                state.searchResults.groups.isEmpty() &&
+                !state.loading) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
@@ -156,20 +213,59 @@ fun ConversationsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    if (state.searchQuery.isNotEmpty() && state.searchResults.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "Search Results",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
+                    if (state.searchQuery.isNotEmpty()) {
+                        if (state.searchResults.contacts.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Contacts",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                            items(state.searchResults.contacts, key = { "c_${it.id}" }) { user ->
+                                ContactSearchResultCard(user, onClick = { viewModel.onContactSearchResultClick(user) })
+                            }
                         }
-                        items(state.searchResults, key = { "search_${it.id}" }) { msg ->
-                            SearchResultCard(msg, onClick = { viewModel.onSearchResultClick(msg) })
+
+                        if (state.searchResults.groups.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Groups",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                            items(state.searchResults.groups, key = { "g_${it.id}" }) { group ->
+                                ConversationCard(
+                                    conversation = group,
+                                    onClick = { viewModel.onConversationClick(group) },
+                                    onMuteToggle = { viewModel.toggleMute(group) }
+                                )
+                            }
                         }
-                        item {
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
+                        if (state.searchResults.messages.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Messages",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                            items(state.searchResults.messages, key = { "m_${it.id}" }) { msg ->
+                                SearchResultCard(msg, onClick = { viewModel.onSearchResultClick(msg) })
+                            }
+                        }
+
+                        if (state.searchResults.contacts.isNotEmpty() ||
+                            state.searchResults.groups.isNotEmpty() ||
+                            state.searchResults.messages.isNotEmpty()) {
+                            item {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+                            }
                         }
                     }
 
@@ -191,6 +287,32 @@ fun ConversationsScreen(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContactSearchResultCard(user: com.chatapp.domain.model.User, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(user.displayName.take(1).uppercase(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(text = user.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(text = user.phone, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
             }
         }
     }
@@ -240,12 +362,21 @@ private fun ConversationCard(
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = conversation.contactName.firstOrNull()?.uppercase() ?: "?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                if (conversation.type == com.chatapp.domain.model.ConversationType.GROUP) {
+                    Icon(
+                        imageVector = Icons.Default.Groups,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                } else {
+                    Text(
+                        text = conversation.name.firstOrNull()?.uppercase() ?: "?",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             Spacer(Modifier.width(16.dp))
@@ -253,7 +384,7 @@ private fun ConversationCard(
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = conversation.contactName,
+                        text = conversation.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f)
@@ -275,7 +406,7 @@ private fun ConversationCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            
+
             IconButton(onClick = onMuteToggle) {
                 Icon(
                     imageVector = if (conversation.isMuted) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
