@@ -190,6 +190,29 @@ class DoubleRatchet private constructor(
                 secureRandom = secureRandom
             )
         }
+
+        /**
+         * AES-GCM encrypt — exposed for E2eeCryptoManager.encryptForSelf().
+         */
+        internal fun aeadEncrypt(key: ByteArray, plaintext: ByteArray): ByteArray {
+            val aead = AesGcmJce(key)
+            return aead.encrypt(plaintext, null)
+        }
+
+        /**
+         * AES-GCM decrypt — exposed for E2eeCryptoManager.decryptForSelf().
+         */
+        internal fun aeadDecrypt(key: ByteArray, ciphertext: ByteArray): ByteArray {
+            val aead = AesGcmJce(key)
+            return aead.decrypt(ciphertext, null)
+        }
+
+        /**
+         * General-purpose HKDF-SHA256 key derivation — exposed for deriveAccountKey().
+         */
+        fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
+            return Hkdf.computeHkdf(HASH_ALGORITHM, ikm, salt, info, length)
+        }
     }
 
     /**
@@ -260,21 +283,16 @@ class DoubleRatchet private constructor(
     }
 
     /**
-     * AES-256-GCM encryption using Tink.
-     * Prepends the 12-byte random IV to the ciphertext for transport.
+     * AES-256-GCM encryption — delegate to companion.
      */
-    private fun aeadEncrypt(key: ByteArray, plaintext: ByteArray): ByteArray {
-        val aead = AesGcmJce(key)
-        return aead.encrypt(plaintext, null)
-    }
+    private fun aeadEncrypt(key: ByteArray, plaintext: ByteArray): ByteArray =
+        Companion.aeadEncrypt(key, plaintext)
 
     /**
-     * AES-256-GCM decryption using Tink.
+     * AES-256-GCM decryption — delegate to companion.
      */
-    private fun aeadDecrypt(key: ByteArray, ciphertext: ByteArray): ByteArray {
-        val aead = AesGcmJce(key)
-        return aead.decrypt(ciphertext, null)
-    }
+    private fun aeadDecrypt(key: ByteArray, ciphertext: ByteArray): ByteArray =
+        Companion.aeadDecrypt(key, ciphertext)
 
     // ---------------------------------------------------------------
     // Serialization: persist ratchet state to EncryptedSharedPreferences

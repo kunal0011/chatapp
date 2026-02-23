@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authGuard } from '../../common/middleware/auth.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
-import { listContacts, sync, listDirectory, addContactById, discover, getMe, getUser, updateMe, updateFcmToken, block, unblock } from './users.controller.js';
+import { listContacts, sync, listDirectory, addContactById, discover, getMe, getUser, updateMe, updateFcmToken, block, unblock, acknowledgeKey, verifyKey } from './users.controller.js';
 
 export const usersRouter = Router();
 
@@ -18,3 +18,6 @@ usersRouter.post('/sync', authGuard, asyncHandler(sync));
 usersRouter.get('/:userId', authGuard, asyncHandler(getUser));
 usersRouter.post('/:userId/block', authGuard, asyncHandler(block));
 usersRouter.delete('/:userId/unblock', authGuard, asyncHandler(unblock));
+// Key Change Alert routes
+usersRouter.post('/:userId/known-key', authGuard, asyncHandler(acknowledgeKey));
+usersRouter.post('/:userId/verify-key', authGuard, asyncHandler(verifyKey));

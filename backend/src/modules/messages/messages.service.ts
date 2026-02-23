@@ -15,6 +15,7 @@ const messageSelect = {
   isEdited: true,
   isEncrypted: true,
   ephemeralKey: true,
+  senderPlaintext: true,
   conversationId: true,
   senderId: true,
   parentId: true,
@@ -83,7 +84,8 @@ export async function searchMessages(userId: string, query: string) {
         contains: query,
         mode: 'insensitive'
       },
-      isDeleted: false
+      isDeleted: false,
+      isEncrypted: false  // Never search ciphertext — encrypted messages are unsearchable server-side
     },
     include: {
       sender: { select: { displayName: true } },
@@ -175,6 +177,7 @@ export async function persistMessage(data: {
   parentId?: string;
   isEncrypted?: boolean;
   ephemeralKey?: string;
+  senderPlaintext?: string;
 }) {
   const conversation = await prisma.conversation.findUnique({
     where: { id: data.conversationId },
@@ -195,6 +198,7 @@ export async function persistMessage(data: {
       status: 'SENT',
       isEncrypted: data.isEncrypted ?? false,
       ephemeralKey: data.ephemeralKey ?? null,
+      senderPlaintext: data.senderPlaintext ?? null,
     },
     include: {
       sender: {

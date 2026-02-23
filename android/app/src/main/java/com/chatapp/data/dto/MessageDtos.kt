@@ -43,7 +43,8 @@ data class ApiMessage(
     @SerializedName("sender") val sender: ApiUser,
     // E2EE fields (null for legacy unencrypted messages)
     @SerializedName("isEncrypted") val isEncrypted: Boolean = false,
-    @SerializedName("ephemeralKey") val ephemeralKey: String? = null
+    @SerializedName("ephemeralKey") val ephemeralKey: String? = null,
+    @SerializedName("senderPlaintext") val senderPlaintext: String? = null
 )
 
 data class ApiParentMessage(

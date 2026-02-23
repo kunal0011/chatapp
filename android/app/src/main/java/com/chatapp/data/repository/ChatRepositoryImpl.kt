@@ -23,6 +23,8 @@ import com.chatapp.domain.repository.ChatRepository
 import com.chatapp.domain.repository.StatusUpdate
 import com.chatapp.core.crypto.E2eeCryptoManager
 import com.chatapp.core.crypto.EncryptedPayload
+import com.chatapp.core.crypto.KeyChangeDetector
+import com.chatapp.core.crypto.KeyChangeEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +42,8 @@ import com.chatapp.data.dto.toDomain as toDomainUser
 import com.chatapp.data.local.entities.toDomain as toDomainEntity
 import com.chatapp.data.local.entities.toDomain as toDomainMessage
 
+import com.chatapp.core.crypto.GroupE2eeManager
+
 @Singleton
 class ChatRepositoryImpl @Inject constructor(
     private val conversationsApi: ConversationsApi,
@@ -49,7 +53,9 @@ class ChatRepositoryImpl @Inject constructor(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val memberDao: MemberDao,
-    private val cryptoManager: E2eeCryptoManager  // E2EE crypto facade
+    private val cryptoManager: E2eeCryptoManager,  // 1:1 E2EE crypto facade
+    private val groupE2eeManager: GroupE2eeManager, // Group E2EE SenderKey protocol
+    private val keyChangeDetector: KeyChangeDetector  // Key Change Alert detector
 ) : ChatRepository {
 
     private val repositoryScope = CoroutineScope(Dispatchers.IO)
@@ -82,9 +88,33 @@ class ChatRepositoryImpl @Inject constructor(
                 // SKIP own messages — they're already in Room with plaintext
                 if (apiMsg.senderId == userId) return@collect
                 // Decrypt incoming encrypted messages from other users
-                val finalMessage = decryptApiMessage(apiMsg)
+                val finalMessage = decryptApiMessage(apiMsg, userId)
                 val domain = finalMessage.toDomainDto()
                 messageDao.insertMessage(domain.toEntity(userId))
+            }
+        }
+
+        // Global Member Added observer — distribute own SenderKey to the new member
+        repositoryScope.launch {
+            socketClient.observeMemberAdded().collect { event ->
+                val myUserId = sessionGateway.currentUserIdOrNull() ?: return@collect
+                // Ignore if we are the ones added (we can't distribute a key we don't have yet)
+                if (event.userId != myUserId) {
+                    runCatching { groupE2eeManager.ensureSenderKeyDistributed(event.conversationId, myUserId) }
+                        .onFailure { e -> android.util.Log.e("ChatRepository", "Failed to distribute SenderKey on join", e) }
+                }
+            }
+        }
+
+        // Global Member Removed observer — mandatory SenderKey rotation to revoke access
+        repositoryScope.launch {
+            socketClient.observeMemberRemoved().collect { event ->
+                val myUserId = sessionGateway.currentUserIdOrNull() ?: return@collect
+                // Ignore if we are the ones removed
+                if (event.userId != myUserId) {
+                    runCatching { groupE2eeManager.rotateSenderKey(event.conversationId, myUserId) }
+                        .onFailure { e -> android.util.Log.e("ChatRepository", "Failed to rotate SenderKey on leave", e) }
+                }
             }
         }
     }
@@ -169,7 +199,7 @@ class ChatRepositoryImpl @Inject constructor(
                         }
                     } else {
                         // New encrypted message from someone else. We MUST run decrypt to advance the ratchet!
-                        val cryptoPlaintext = decryptApiMessage(lastMsg)
+                        val cryptoPlaintext = decryptApiMessage(lastMsg, userId)
                         // If we already had it in Room, maybe prefer Room's existing text.
                         // But we return the successfully decrypted object.
                         cryptoPlaintext
@@ -182,6 +212,22 @@ class ChatRepositoryImpl @Inject constructor(
                 }
             }
             modifiedConv.toDomainDto(userId)
+        }
+
+        // Check for identity key changes in DIRECT conversations
+        response.conversations.forEach { apiConv ->
+            if (apiConv.type == "DIRECT") {
+                val otherMember = apiConv.members?.firstOrNull { m -> m.user.id != userId }
+                if (otherMember != null) {
+                    // Non-blocking — failures are logged inside KeyChangeDetector
+                    runCatching {
+                        keyChangeDetector.checkForKeyChange(
+                            contactUserId = otherMember.user.id,
+                            contactDisplayName = otherMember.user.displayName
+                        )
+                    }
+                }
+            }
         }
 
         // Save conversations
@@ -339,10 +385,16 @@ class ChatRepositoryImpl @Inject constructor(
                     }
                     // Not in Room — try to decrypt (e.g., received while we were offline)
                     val decrypted = if (apiMsg.senderId == userId) {
-                        // Our own encrypted message — we can't decrypt our own outbound ciphertext
-                        apiMsg.copy(content = "[Encrypted message]", isEncrypted = false)
+                        // Own encrypted message — try senderPlaintext (account-key encrypted)
+                        val selfDecrypted = apiMsg.senderPlaintext?.let {
+                            runCatching { cryptoManager.decryptForSelf(it) }.getOrNull()
+                        }
+                        apiMsg.copy(
+                            content = selfDecrypted ?: "[Encrypted message]",
+                            isEncrypted = false
+                        )
                     } else {
-                        decryptApiMessage(apiMsg)
+                        decryptApiMessage(apiMsg, userId)
                     }
                     toInsert.add(decrypted.toDomainDto().toEntity(userId))
                 } else {
@@ -367,8 +419,24 @@ class ChatRepositoryImpl @Inject constructor(
         return try {
             val response = conversationsApi.searchMessages(query)
             val userId = sessionGateway.currentUserIdOrNull() ?: ""
+
+            // Server returns only unencrypted messages; supplement with local Room
+            // search which has decrypted plaintext for E2EE messages.
+            val localResults = try {
+                messageDao.searchMessages(query, userId).map { it.toDomainMessage() }
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            val serverMessages = response.messages.map { it.toDomainDto() }
+
+            // Merge, deduplicate by ID, sort newest first
+            val mergedMessages = (serverMessages + localResults)
+                .distinctBy { it.id }
+                .sortedByDescending { it.createdAt }
+
             SearchResults(
-                messages = response.messages.map { it.toDomainDto() },
+                messages = mergedMessages,
                 contacts = response.contacts.map { it.toDomainUser() },
                 groups = response.groups.map { it.toDomainDto(userId) }
             )
@@ -399,19 +467,51 @@ class ChatRepositoryImpl @Inject constructor(
 
         // Encrypt before sending over the network — server only ever sees ciphertext
         try {
-            val encryptedPayload = cryptoManager.encryptWithHeader(conversationId, getRecipientId(conversationId, session.userId), content)
-            val encryptedJson = com.google.gson.Gson().toJson(encryptedPayload)
-            socketClient.sendMessage(
-                conversationId = conversationId,
-                content = encryptedJson,
-                clientTempId = clientTempId,
-                parentId = parentId,
-                isEncrypted = true,
-                ephemeralKey = encryptedPayload.ephemeralKey
-            )
+            var conversation = conversationDao.getConversationById(conversationId, session.userId)
+            if (conversation == null) {
+                android.util.Log.w("ChatRepository", "Conversation missing locally. Fetching before encryption...")
+                runCatching {
+                    getConversation(conversationId)
+                    conversation = conversationDao.getConversationById(conversationId, session.userId)
+                }.onFailure { e ->
+                    android.util.Log.e("ChatRepository", "Failed to fetch missing conversation $conversationId", e)
+                }
+            }
+
+            if (conversation?.type == "GROUP") {
+                // Group E2EE: SenderKey encrypt
+                groupE2eeManager.ensureSenderKeyDistributed(conversationId, session.userId)
+                val senderKeyMsg = groupE2eeManager.encryptGroupMessage(conversationId, session.userId, content)
+                val encryptedJson = com.google.gson.Gson().toJson(senderKeyMsg)
+                val selfPlaintext = cryptoManager.encryptForSelf(content)
+                socketClient.sendMessage(
+                    conversationId = conversationId,
+                    content = encryptedJson,
+                    clientTempId = clientTempId,
+                    parentId = parentId,
+                    isEncrypted = true,
+                    // senderPlaintext goes here for own history recovery
+                    senderPlaintext = selfPlaintext
+                )
+            } else {
+                // 1:1 E2EE: X3DH + Double Ratchet
+                val encryptedPayload = cryptoManager.encryptWithHeader(conversationId, getRecipientId(conversationId, session.userId), content)
+                val encryptedJson = com.google.gson.Gson().toJson(encryptedPayload)
+                // Encrypt plaintext with account key for own history recovery
+                val selfPlaintext = cryptoManager.encryptForSelf(content)
+                socketClient.sendMessage(
+                    conversationId = conversationId,
+                    content = encryptedJson,
+                    clientTempId = clientTempId,
+                    parentId = parentId,
+                    isEncrypted = true,
+                    // ephemeralKey is already inside encryptedJson — no need to send separately
+                    senderPlaintext = selfPlaintext
+                )
+            }
         } catch (e: Exception) {
-            android.util.Log.e("ChatRepository", "E2EE encrypt failed, falling back to plaintext: ${e.message}")
-            socketClient.sendMessage(conversationId, content, clientTempId, parentId)
+            android.util.Log.e("ChatRepository", "E2EE FAILED for chat $conversationId. NOT sending plaintext: ${e.message}")
+            throw e
         }
     }
 
@@ -420,17 +520,22 @@ class ChatRepositoryImpl @Inject constructor(
      * Decrypt an incoming ApiMessage if it's encrypted.
      * Returns the message with plaintext content (or original if not encrypted / decryption fails).
      */
-    private fun decryptApiMessage(apiMsg: com.chatapp.data.dto.ApiMessage): com.chatapp.data.dto.ApiMessage {
+    private suspend fun decryptApiMessage(apiMsg: com.chatapp.data.dto.ApiMessage, myUserId: String): com.chatapp.data.dto.ApiMessage {
         if (!apiMsg.isEncrypted) return apiMsg
         return try {
             val gson = com.google.gson.Gson()
-            val payload = gson.fromJson(apiMsg.content, EncryptedPayload::class.java)
-            // Merge ephemeralKey from top-level field (stored by server) into the EncryptedPayload
-            val payloadWithHeader = if (apiMsg.ephemeralKey != null && payload.ephemeralKey == null) {
-                payload.copy(ephemeralKey = apiMsg.ephemeralKey)
-            } else payload
-            val plaintext = cryptoManager.decrypt(apiMsg.conversationId, payloadWithHeader)
-            apiMsg.copy(content = plaintext, isEncrypted = false)
+            
+            // Heuristic to detect Group E2EE (SenderKeyMessage) vs 1:1 E2EE (EncryptedPayload)
+            if (apiMsg.content.contains("\"signature\"") && apiMsg.content.contains("\"iteration\"")) {
+                val skMsg = gson.fromJson(apiMsg.content, com.chatapp.core.crypto.SenderKeyMessage::class.java)
+                groupE2eeManager.ensureSenderKeyReceived(apiMsg.conversationId, skMsg.senderUserId, myUserId)
+                val plaintext = groupE2eeManager.decryptGroupMessage(apiMsg.conversationId, skMsg.senderUserId, skMsg)
+                apiMsg.copy(content = plaintext, isEncrypted = false)
+            } else {
+                val payload = gson.fromJson(apiMsg.content, com.chatapp.core.crypto.EncryptedPayload::class.java)
+                val plaintext = cryptoManager.decrypt(apiMsg.conversationId, payload)
+                apiMsg.copy(content = plaintext, isEncrypted = false)
+            }
         } catch (e: Exception) {
             val errorMsg = e.message ?: e.javaClass.simpleName
             android.util.Log.e("ChatRepository", "E2EE decrypt failed for msg ${apiMsg.id} in ${apiMsg.conversationId}: $errorMsg")

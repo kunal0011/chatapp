@@ -51,4 +51,18 @@ interface UsersApi {
 
     @POST("users/add")
     suspend fun addContactByUserId(@Body request: Map<String, String>): ContactsResponse
+
+    /** Cache the first-seen identity key for a contact (key change baseline). */
+    @POST("users/{userId}/known-key")
+    suspend fun updateKnownIdentityKey(
+        @Path("userId") contactId: String,
+        @Body body: Map<String, String>
+    ): Unit
+
+    /** Mark Safety Number as verified after the user explicitly acknowledged a key change alert. */
+    @POST("users/{userId}/verify-key")
+    suspend fun verifyIdentityKey(
+        @Path("userId") contactId: String,
+        @Body body: Map<String, String>
+    ): Unit
 }

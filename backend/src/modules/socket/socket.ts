@@ -40,6 +40,7 @@ interface MessageSendPayload {
   clientTempId?: string;
   isEncrypted?: boolean;   // true when content is E2EE ciphertext (base64)
   ephemeralKey?: string;   // base64 X3DH ephemeral public key (first message of session)
+  senderPlaintext?: string; // AES-encrypted (sender's account key) for own history recovery
 }
 
 interface MessageEditPayload {
@@ -88,6 +89,12 @@ function authenticateSocket(socket: Socket): string {
   return payload.sub;
 }
 
+let ioInstance: Server | null = null;
+
+export function getIO(): Server | null {
+  return ioInstance;
+}
+
 export function registerSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
     cors: {
@@ -96,6 +103,8 @@ export function registerSocketServer(httpServer: HttpServer) {
     },
     adapter: createAdapter(pubClient, subClient)
   });
+
+  ioInstance = io;
 
   io.use((socket, next) => {
     try {
@@ -183,6 +192,7 @@ export function registerSocketServer(httpServer: HttpServer) {
           ...(payload.parentId && { parentId: payload.parentId }),
           isEncrypted: payload.isEncrypted ?? false,
           ...(payload.ephemeralKey && { ephemeralKey: payload.ephemeralKey }),
+          ...(payload.senderPlaintext && { senderPlaintext: payload.senderPlaintext }),
         });
 
         logger.info({ userId, conversationId: payload.conversationId, messageId: message.id }, 'Broadcasting new message to room');

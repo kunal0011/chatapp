@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { getContactsForUser, syncContacts, getDirectoryUsers, addUserContact, discoverUsersByPhones, getUserById, updateProfile, registerPushToken, blockUser, unblockUser } from './users.service.js';
+import { getContactsForUser, syncContacts, getDirectoryUsers, addUserContact, discoverUsersByPhones, getUserById, updateProfile, registerPushToken, blockUser, unblockUser, updateKnownIdentityKey, acknowledgeKeyChange } from './users.service.js';
 import { AppError } from '../../common/errors/app-error.js';
 
 export async function listContacts(req: Request, res: Response) {
@@ -90,4 +90,36 @@ export async function sync(req: Request, res: Response) {
     message: `Successfully synced ${syncedCount} contacts`,
     contacts
   });
+}
+
+/**
+ * POST /users/:userId/known-key
+ * Body: { identityKey: string }
+ * Called when the client first fetches a contact's key bundle — caches the identity key
+ * so future changes can be detected and the user can be warned.
+ */
+export async function acknowledgeKey(req: Request, res: Response) {
+  const contactId = req.params.userId as string;
+  const { identityKey } = req.body;
+  if (typeof identityKey !== 'string' || identityKey.trim().length === 0) {
+    throw new AppError(StatusCodes.BAD_REQUEST, 'identityKey is required');
+  }
+  await updateKnownIdentityKey(req.auth!.userId, contactId, identityKey);
+  res.status(StatusCodes.OK).json({ message: 'Known identity key updated' });
+}
+
+/**
+ * POST /users/:userId/verify-key
+ * Body: { identityKey: string }
+ * Called when the user explicitly verifies the Safety Number after a key change alert.
+ * Stamps ikVerifiedAt to record when they last confirmed the key.
+ */
+export async function verifyKey(req: Request, res: Response) {
+  const contactId = req.params.userId as string;
+  const { identityKey } = req.body;
+  if (typeof identityKey !== 'string' || identityKey.trim().length === 0) {
+    throw new AppError(StatusCodes.BAD_REQUEST, 'identityKey is required');
+  }
+  await acknowledgeKeyChange(req.auth!.userId, contactId, identityKey);
+  res.status(StatusCodes.OK).json({ message: 'Key change acknowledged and verified' });
 }

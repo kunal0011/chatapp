@@ -39,3 +39,21 @@ data class KeyBundleResponse(
 data class OPKCountResponse(
     @SerializedName("oneTimePreKeyCount") val oneTimePreKeyCount: Int
 )
+
+// ---------------------------------------------------------------
+// Group E2EE (SenderKey) DTOs
+// ---------------------------------------------------------------
+
+data class SenderKeyDistributionDto(
+    @SerializedName("recipientUserId") val recipientUserId: String? = null, // Set when sending to server
+    @SerializedName("senderUserId") val senderUserId: String? = null,       // Present when fetching from server
+    @SerializedName("encryptedKey") val encryptedKey: String                // 1:1 E2EE encrypted SenderKey blob
+)
+
+data class DistributeSenderKeysRequest(
+    @SerializedName("distributions") val distributions: List<SenderKeyDistributionDto>
+)
+
+data class FetchSenderKeysResponse(
+    @SerializedName("keys") val keys: List<SenderKeyDistributionDto>
+)

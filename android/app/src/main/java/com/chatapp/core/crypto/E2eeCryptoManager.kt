@@ -99,6 +99,28 @@ class E2eeCryptoManager @Inject constructor(
             }
             // serverCount >= LOW_OPK_THRESHOLD or -1 (network error) → nothing to do
         }
+
+        // SPK rotation — rotate if older than SPK_ROTATION_DAYS
+        val spkAgeDays = keyStore.spkAgeDays()
+        if (spkAgeDays >= E2eeKeyStore.SPK_ROTATION_DAYS) {
+            android.util.Log.i("E2eeCryptoManager", "SPK is ${spkAgeDays}d old — rotating")
+            try {
+                val newSpk = keyStore.rotateSignedPreKey()
+                // Re-upload the full bundle with new SPK so the server is up to date
+                val updatedBundle = keyStore.getExistingPublicBundle()
+                    ?: keyStore.getPublicKeyBundle()
+                uploadBundle(updatedBundle)
+                android.util.Log.i("E2eeCryptoManager", "SPK rotated to keyId=${newSpk.keyId} and re-uploaded")
+                // Clear ratchet sessions: new X3DH sessions will use the new SPK.
+                // Existing sessions (already established) are unaffected since they
+                // don't rely on the SPK after initial handshake.
+                // We only need to clear the pending header cache so the next first-message
+                // builds a fresh X3DH with the new SPK.
+                pendingX3DHHeaders.clear()
+            } catch (e: Exception) {
+                android.util.Log.w("E2eeCryptoManager", "SPK rotation failed (non-fatal): ${e.message}")
+            }
+        }
     }
 
     /** Upload a full key bundle to the server. */
@@ -352,6 +374,61 @@ class E2eeCryptoManager @Inject constructor(
         allKeys.filter { it.startsWith(RATCHET_PREFIX) }.forEach { editor.remove(it) }
         editor.apply()
         android.util.Log.i("E2eeCryptoManager", "Cleared ${allKeys.count { it.startsWith(RATCHET_PREFIX) }} stale ratchet session keys")
+    }
+
+    // ---------------------------------------------------------------
+    // Self-history encryption (Issue 1 fix)
+    // ---------------------------------------------------------------
+
+    /**
+     * Encrypt plaintext with a stable per-user account key so the sender can
+     * recover their own message history on a new device / after reinstall.
+     *
+     * The account key = HKDF-SHA256(IKM = identityPrivateKey, info = "self-history-v1", salt = 0).
+     * This key is deterministic: same identity key → same account key.
+     *
+     * @return base64-encoded ciphertext (AES-128-GCM via the same AEAD helper used in DoubleRatchet)
+     */
+    fun encryptForSelf(plaintext: String): String? {
+        val accountKey = deriveAccountKey() ?: return null
+        return try {
+            val ciphertext = DoubleRatchet.aeadEncrypt(accountKey, plaintext.toByteArray(Charsets.UTF_8))
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            android.util.Log.w("E2eeCryptoManager", "encryptForSelf failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Decrypt sender's own encrypted history blob.
+     * @param ciphertext base64 string produced by [encryptForSelf]
+     * @return plaintext string, or null if decryption fails (key changed / data corrupt)
+     */
+    fun decryptForSelf(ciphertext: String): String? {
+        val accountKey = deriveAccountKey() ?: return null
+        return try {
+            val raw = Base64.decode(ciphertext, Base64.NO_WRAP)
+            val plaintext = DoubleRatchet.aeadDecrypt(accountKey, raw)
+            String(plaintext, Charsets.UTF_8)
+        } catch (e: Exception) {
+            android.util.Log.w("E2eeCryptoManager", "decryptForSelf failed (key may have changed): ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Derive a stable 32-byte AES key from the identity private key.
+     * HKDF(ikm = identityPrivateKey, salt = zeros, info = "self-history-v1")
+     */
+    private fun deriveAccountKey(): ByteArray? {
+        val identity = try { keyStore.getOrCreateIdentityKeyPair() } catch (e: Exception) { return null }
+        return DoubleRatchet.hkdfSha256(
+            ikm = identity.privateKey,
+            salt = ByteArray(32),
+            info = "self-history-v1".toByteArray(Charsets.UTF_8),
+            length = 32
+        )
     }
 }
 

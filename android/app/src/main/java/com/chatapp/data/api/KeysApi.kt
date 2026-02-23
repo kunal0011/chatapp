@@ -39,4 +39,33 @@ interface KeysApi {
      */
     @GET("users/me/keys/count")
     suspend fun getOPKCount(): OPKCountResponse
+
+    // ---------------------------------------------------------------
+    // Group E2EE (SenderKey) Endpoints
+    // ---------------------------------------------------------------
+
+    /** 
+     * Distribute own SenderKey to specified group members (1:1 encrypted blobs). 
+     */
+    @POST("groups/{groupId}/sender-keys")
+    suspend fun distributeSenderKeys(
+        @Path("groupId") groupId: String,
+        @Body request: com.chatapp.data.dto.DistributeSenderKeysRequest
+    ): Response<Unit>
+
+    /** 
+     * Fetch pending SenderKeys that other members have distributed to us in this group. 
+     */
+    @GET("groups/{groupId}/sender-keys")
+    suspend fun fetchSenderKeys(
+        @Path("groupId") groupId: String
+    ): com.chatapp.data.dto.FetchSenderKeysResponse
+
+    /** 
+     * Revoke own SenderKey before rotation (e.g., after a member is removed). 
+     */
+    @DELETE("groups/{groupId}/sender-keys/mine")
+    suspend fun revokeMySenderKey(
+        @Path("groupId") groupId: String
+    ): Response<Unit>
 }

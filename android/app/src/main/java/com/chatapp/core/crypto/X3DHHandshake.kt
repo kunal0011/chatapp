@@ -129,17 +129,22 @@ object X3DHHandshake {
         usedOneTimePreKeyId: Int?
     ): ByteArray {
         val ourIdentity = ourKeyStore.getOrCreateIdentityKeyPair()
-        val ourSpk = ourKeyStore.getOrCreateSignedPreKey()
-        check(ourSpk.keyId == usedSignedPreKeyId) {
-            "SignedPreKey ID mismatch: expected ${ourSpk.keyId}, got $usedSignedPreKeyId"
-        }
+
+        // Look up SPK private key — supports both current SPK and the previous SPK
+        // within its 7-day grace window (for in-flight sessions after a rotation).
+        val spkPrivate = ourKeyStore.getSignedPreKeyPrivate(usedSignedPreKeyId)
+            ?: run {
+                val currentId = ourKeyStore.getOrCreateSignedPreKey().keyId
+                error("SignedPreKey ID $usedSignedPreKeyId not found (current=$currentId). " +
+                    "The sender may have used a key that has rotated beyond the grace window.")
+            }
 
         // DH1 = DH(SPK_B, IK_A)
-        val dh1 = dh(ourSpk.privateKey, senderIdentityKeyPublic)
+        val dh1 = dh(spkPrivate, senderIdentityKeyPublic)
         // DH2 = DH(IK_B, EK_A)
         val dh2 = dh(ourIdentity.privateKey, ephemeralKeyPublic)
         // DH3 = DH(SPK_B, EK_A)
-        val dh3 = dh(ourSpk.privateKey, ephemeralKeyPublic)
+        val dh3 = dh(spkPrivate, ephemeralKeyPublic)
 
         val dhMaterial = if (usedOneTimePreKeyId != null) {
             val opkPrivate = ourKeyStore.getOneTimePreKeyPrivate(usedOneTimePreKeyId)
@@ -157,7 +162,6 @@ object X3DHHandshake {
         android.util.Log.d("X3DHHandshake", "Alice IK: ${encodePublicKey(senderIdentityKeyPublic)}")
         android.util.Log.d("X3DHHandshake", "Alice EK: ${encodePublicKey(ephemeralKeyPublic)}")
         android.util.Log.d("X3DHHandshake", "Bob IK: ${encodePublicKey(ourIdentity.publicKey)}")
-        android.util.Log.d("X3DHHandshake", "Bob SPK: ${encodePublicKey(ourSpk.publicKey)}")
         android.util.Log.d("X3DHHandshake", "Bob OPK Used ID: $usedOneTimePreKeyId")
         android.util.Log.d("X3DHHandshake", "Final SK: ${encodePublicKey(sharedSecret)}")
 

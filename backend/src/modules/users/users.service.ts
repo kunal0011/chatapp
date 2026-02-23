@@ -68,72 +68,96 @@ export async function syncContacts(userId: string, phones: string[]) {
 }
 
 export async function discoverUsersByPhones(userId: string, phones: string[]) {
-    const allUsers = await prisma.user.findMany({
-        where: { id: { not: userId } },
-        select: { id: true, phone: true, displayName: true }
-    });
+  const allUsers = await prisma.user.findMany({
+    where: { id: { not: userId } },
+    select: { id: true, phone: true, displayName: true }
+  });
 
-    const normalizedRequested = phones.map(p => p.replace(/[^0-9]/g, '').slice(-10));
+  const normalizedRequested = phones.map(p => p.replace(/[^0-9]/g, '').slice(-10));
 
-    return allUsers.filter(u => {
-        const normalizedUser = u.phone.replace(/[^0-9]/g, '').slice(-10);
-        return normalizedRequested.includes(normalizedUser);
-    });
+  return allUsers.filter(u => {
+    const normalizedUser = u.phone.replace(/[^0-9]/g, '').slice(-10);
+    return normalizedRequested.includes(normalizedUser);
+  });
 }
 
 export async function getDirectoryUsers(userId: string) {
-    return prisma.user.findMany({
-        where: { id: { not: userId } },
-        select: { id: true, phone: true, displayName: true },
-        take: 100
-    });
+  return prisma.user.findMany({
+    where: { id: { not: userId } },
+    select: { id: true, phone: true, displayName: true },
+    take: 100
+  });
 }
 
 export async function addUserContact(ownerId: string, contactId: string) {
-    await prisma.userContact.upsert({
-        where: { ownerId_contactId: { ownerId, contactId } },
-        create: { ownerId, contactId },
-        update: {}
-    });
-    return getContactsForUser(ownerId);
+  await prisma.userContact.upsert({
+    where: { ownerId_contactId: { ownerId, contactId } },
+    create: { ownerId, contactId },
+    update: {}
+  });
+  return getContactsForUser(ownerId);
+}
+
+/**
+ * Update the locally cached identity key fingerprint for a contact.
+ * Called by the client after it has fetched the contact's key bundle for the first time,
+ * or after the user acknowledges a key change alert.
+ */
+export async function updateKnownIdentityKey(ownerId: string, contactId: string, identityKey: string) {
+  await prisma.userContact.upsert({
+    where: { ownerId_contactId: { ownerId, contactId } },
+    create: { ownerId, contactId, knownIdentityKey: identityKey },
+    update: { knownIdentityKey: identityKey }
+  });
+}
+
+/**
+ * Stamp the ikVerifiedAt timestamp when the user actively verifies the Safety Number.
+ */
+export async function acknowledgeKeyChange(ownerId: string, contactId: string, newIdentityKey: string) {
+  await prisma.userContact.upsert({
+    where: { ownerId_contactId: { ownerId, contactId } },
+    create: { ownerId, contactId, knownIdentityKey: newIdentityKey, ikVerifiedAt: new Date() },
+    update: { knownIdentityKey: newIdentityKey, ikVerifiedAt: new Date() }
+  });
 }
 
 export async function registerPushToken(userId: string, token: string) {
-    return prisma.pushToken.upsert({
-        where: { token },
-        update: { userId },
-        create: { userId, token }
-    });
+  return prisma.pushToken.upsert({
+    where: { token },
+    update: { userId },
+    create: { userId, token }
+  });
 }
 
 export async function isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
-    const block = await prisma.blockedUser.findUnique({
-        where: { blockerId_blockedId: { blockerId, blockedId } }
-    });
-    return !!block;
+  const block = await prisma.blockedUser.findUnique({
+    where: { blockerId_blockedId: { blockerId, blockedId } }
+  });
+  return !!block;
 }
 
 export async function blockUser(blockerId: string, blockedId: string) {
-    return prisma.blockedUser.upsert({
-        where: { blockerId_blockedId: { blockerId, blockedId } },
-        create: { blockerId, blockedId },
-        update: {}
-    });
+  return prisma.blockedUser.upsert({
+    where: { blockerId_blockedId: { blockerId, blockedId } },
+    create: { blockerId, blockedId },
+    update: {}
+  });
 }
 
 export async function unblockUser(blockerId: string, blockedId: string) {
-    return prisma.blockedUser.deleteMany({
-        where: { blockerId, blockedId }
-    });
+  return prisma.blockedUser.deleteMany({
+    where: { blockerId, blockedId }
+  });
 }
 
 export async function updateLastSeen(userId: string) {
-    try {
-        return await prisma.user.updateMany({
-            where: { id: userId },
-            data: { lastSeen: new Date() }
-        });
-    } catch (error) {
-        return null;
-    }
+  try {
+    return await prisma.user.updateMany({
+      where: { id: userId },
+      data: { lastSeen: new Date() }
+    });
+  } catch (error) {
+    return null;
+  }
 }

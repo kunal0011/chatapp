@@ -33,4 +33,7 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId AND ownerId = :ownerId")
     suspend fun deleteMessagesForConversation(conversationId: String, ownerId: String)
+
+    @Query("SELECT * FROM messages WHERE ownerId = :ownerId AND content LIKE '%' || :query || '%' AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 20")
+    suspend fun searchMessages(query: String, ownerId: String): List<MessageEntity>
 }

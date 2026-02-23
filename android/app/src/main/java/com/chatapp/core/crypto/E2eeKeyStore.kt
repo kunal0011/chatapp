@@ -74,14 +74,24 @@ class E2eeKeyStore @Inject constructor(
         private const val KEY_IDENTITY_PUBLIC = "e2ee_ik_public"
         private const val KEY_SIGNING_PRIVATE = "e2ee_signing_private"
         private const val KEY_SIGNING_PUBLIC = "e2ee_signing_public"
+        // Current SPK
         private const val KEY_SPK_ID = "e2ee_spk_id"
         private const val KEY_SPK_PRIVATE = "e2ee_spk_private"
         private const val KEY_SPK_PUBLIC = "e2ee_spk_public"
         private const val KEY_SPK_SIGNATURE = "e2ee_spk_signature"
+        private const val KEY_SPK_CREATED_AT = "e2ee_spk_created_at"  // epoch millis
+        // Previous SPK (kept for 7-day grace window)
+        private const val KEY_PREV_SPK_ID = "e2ee_prev_spk_id"
+        private const val KEY_PREV_SPK_PRIVATE = "e2ee_prev_spk_private"
+        private const val KEY_PREV_SPK_EXPIRES_AT = "e2ee_prev_spk_expires_at"  // epoch millis
+        // OPKs
         private const val KEY_OPK_COUNT = "e2ee_opk_count"
         private const val KEY_OPK_PRIVATE_PREFIX = "e2ee_opk_private_"
         private const val KEY_OPK_PUBLIC_PREFIX = "e2ee_opk_public_"
         private const val OPK_BATCH_SIZE = 10
+        // Rotation thresholds
+        const val SPK_ROTATION_DAYS = 30L
+        const val SPK_GRACE_DAYS = 7L
     }
 
     private val secureRandom = SecureRandom()
@@ -151,7 +161,7 @@ class E2eeKeyStore @Inject constructor(
     }
 
     /**
-     * Get or create the signed prekey.
+     * Get or create the current signed prekey.
      * The signed prekey is a medium-term X25519 key pair signed by the Ed25519 signing key.
      */
     fun getOrCreateSignedPreKey(): SignedPreKeyRecord {
@@ -175,16 +185,97 @@ class E2eeKeyStore @Inject constructor(
         val (privBytes, pubBytes) = generateX25519KeyPair()
         val signingPrivKey = Base64.decode(signingPrivStr, Base64.NO_WRAP)
         val signature = sign(signingPrivKey, pubBytes)
-        val keyId = 1
+        val keyId = 1  // Starting keyId; subsequent rotations will increment
 
         encryptedPrefs.edit()
             .putInt(KEY_SPK_ID, keyId)
             .putString(KEY_SPK_PRIVATE, Base64.encodeToString(privBytes, Base64.NO_WRAP))
             .putString(KEY_SPK_PUBLIC, Base64.encodeToString(pubBytes, Base64.NO_WRAP))
             .putString(KEY_SPK_SIGNATURE, Base64.encodeToString(signature, Base64.NO_WRAP))
+            .putLong(KEY_SPK_CREATED_AT, System.currentTimeMillis())
             .apply()
 
         return SignedPreKeyRecord(keyId = keyId, privateKey = privBytes, publicKey = pubBytes, signature = signature)
+    }
+
+    /**
+     * How old the current SPK is in days. Returns 0 if unknown (treat as fresh).
+     */
+    fun spkAgeDays(): Long {
+        val createdAt = encryptedPrefs.getLong(KEY_SPK_CREATED_AT, 0L)
+        if (createdAt == 0L) return 0L
+        return (System.currentTimeMillis() - createdAt) / (1000L * 60 * 60 * 24)
+    }
+
+    /**
+     * Rotate the signed prekey:
+     * 1. Demote current SPK → previous (kept for SPK_GRACE_DAYS).
+     * 2. Generate a new SPK with an incremented keyId.
+     * 3. Expire the old "previous" SPK if it's past the grace window.
+     *
+     * @return the new SignedPreKeyRecord (ready to upload to server)
+     */
+    fun rotateSignedPreKey(): SignedPreKeyRecord {
+        val currentId = encryptedPrefs.getInt(KEY_SPK_ID, 0)
+        val currentPriv = encryptedPrefs.getString(KEY_SPK_PRIVATE, null)
+
+        val signingPrivStr = encryptedPrefs.getString(KEY_SIGNING_PRIVATE, null)
+            ?: error("Identity key must exist before rotating signed prekey.")
+
+        val (newPrivBytes, newPubBytes) = generateX25519KeyPair()
+        val signingPrivKey = Base64.decode(signingPrivStr, Base64.NO_WRAP)
+        val newSignature = sign(signingPrivKey, newPubBytes)
+        val newKeyId = currentId + 1
+        val gracePeriodMillis = SPK_GRACE_DAYS * 24 * 60 * 60 * 1000L
+
+        val editor = encryptedPrefs.edit()
+
+        // Promote current → previous (if current exists)
+        if (currentPriv != null && currentId > 0) {
+            editor.putInt(KEY_PREV_SPK_ID, currentId)
+            editor.putString(KEY_PREV_SPK_PRIVATE, currentPriv)
+            editor.putLong(KEY_PREV_SPK_EXPIRES_AT, System.currentTimeMillis() + gracePeriodMillis)
+        }
+
+        // Write new SPK
+        editor
+            .putInt(KEY_SPK_ID, newKeyId)
+            .putString(KEY_SPK_PRIVATE, Base64.encodeToString(newPrivBytes, Base64.NO_WRAP))
+            .putString(KEY_SPK_PUBLIC, Base64.encodeToString(newPubBytes, Base64.NO_WRAP))
+            .putString(KEY_SPK_SIGNATURE, Base64.encodeToString(newSignature, Base64.NO_WRAP))
+            .putLong(KEY_SPK_CREATED_AT, System.currentTimeMillis())
+            .apply()
+
+        android.util.Log.i("E2eeKeyStore", "SPK rotated: keyId $currentId → $newKeyId (prev kept for ${SPK_GRACE_DAYS}d grace)")
+        return SignedPreKeyRecord(keyId = newKeyId, privateKey = newPrivBytes, publicKey = newPubBytes, signature = newSignature)
+    }
+
+    /**
+     * Retrieve the private key for a given SPK keyId.
+     * Checks the current SPK first, then the previous (if still within grace window).
+     * Returns null if the keyId is unknown or expired.
+     */
+    fun getSignedPreKeyPrivate(keyId: Int): ByteArray? {
+        // Check current SPK
+        if (encryptedPrefs.getInt(KEY_SPK_ID, -1) == keyId) {
+            val priv = encryptedPrefs.getString(KEY_SPK_PRIVATE, null) ?: return null
+            return Base64.decode(priv, Base64.NO_WRAP)
+        }
+        // Check previous SPK (grace window)
+        if (encryptedPrefs.getInt(KEY_PREV_SPK_ID, -1) == keyId) {
+            val expiresAt = encryptedPrefs.getLong(KEY_PREV_SPK_EXPIRES_AT, 0L)
+            if (System.currentTimeMillis() < expiresAt) {
+                val priv = encryptedPrefs.getString(KEY_PREV_SPK_PRIVATE, null) ?: return null
+                android.util.Log.d("E2eeKeyStore", "Using previous SPK keyId=$keyId (within grace window)")
+                return Base64.decode(priv, Base64.NO_WRAP)
+            } else {
+                android.util.Log.w("E2eeKeyStore", "Previous SPK keyId=$keyId has expired — removing")
+                encryptedPrefs.edit()
+                    .remove(KEY_PREV_SPK_ID).remove(KEY_PREV_SPK_PRIVATE).remove(KEY_PREV_SPK_EXPIRES_AT)
+                    .apply()
+            }
+        }
+        return null
     }
 
     /**
@@ -253,6 +344,14 @@ class E2eeKeyStore @Inject constructor(
      * Check if this device has ever had keys generated.
      */
     fun hasKeys(): Boolean = encryptedPrefs.getString(KEY_IDENTITY_PRIVATE, null) != null
+
+    /**
+     * Expose the local identity public key bytes for Safety Numbers computation.
+     */
+    fun getIdentityPublicKeyBytes(): ByteArray? {
+        val str = encryptedPrefs.getString(KEY_IDENTITY_PUBLIC, null) ?: return null
+        return Base64.decode(str, Base64.NO_WRAP)
+    }
 
     /**
      * Return the existing public key bundle (already-generated keys only, no new OPK generation).

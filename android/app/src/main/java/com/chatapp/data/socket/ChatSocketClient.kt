@@ -44,6 +44,11 @@ data class SocketStatusUpdateEvent(
     @SerializedName("status") val status: String
 )
 
+data class GroupMemberEvent(
+    @SerializedName("conversationId") val conversationId: String,
+    @SerializedName("userId") val userId: String
+)
+
 @Singleton
 class ChatSocketClient @Inject constructor(
     private val gson: Gson
@@ -54,7 +59,10 @@ class ChatSocketClient @Inject constructor(
     private val ackEvents = MutableSharedFlow<MessageAckEvent>(extraBufferCapacity = 32)
     private val readEvents = MutableSharedFlow<SocketReadEvent>(extraBufferCapacity = 32)
     private val statusUpdateEvents = MutableSharedFlow<SocketStatusUpdateEvent>(extraBufferCapacity = 32)
+    private val typeEvents = MutableSharedFlow<SocketTypingEvent>(extraBufferCapacity = 32)
     private val typingEvents = MutableSharedFlow<SocketTypingEvent>(extraBufferCapacity = 32)
+    private val memberAddedEvents = MutableSharedFlow<GroupMemberEvent>(extraBufferCapacity = 32)
+    private val memberRemovedEvents = MutableSharedFlow<GroupMemberEvent>(extraBufferCapacity = 32)
     private val connectionState = MutableStateFlow(false)
 
     suspend fun connect(accessToken: String) {
@@ -129,6 +137,24 @@ class ChatSocketClient @Inject constructor(
                 }
             }
 
+            created.on("group:member-added") { args ->
+                if (args.isNotEmpty()) {
+                    runCatching {
+                        val event = gson.fromJson(args[0].toString(), GroupMemberEvent::class.java)
+                        memberAddedEvents.tryEmit(event)
+                    }
+                }
+            }
+
+            created.on("group:member-removed") { args ->
+                if (args.isNotEmpty()) {
+                    runCatching {
+                        val event = gson.fromJson(args[0].toString(), GroupMemberEvent::class.java)
+                        memberRemovedEvents.tryEmit(event)
+                    }
+                }
+            }
+
             created.connect()
             socket = created
         }
@@ -168,7 +194,8 @@ class ChatSocketClient @Inject constructor(
         clientTempId: String,
         parentId: String? = null,
         isEncrypted: Boolean = false,
-        ephemeralKey: String? = null
+        ephemeralKey: String? = null,
+        senderPlaintext: String? = null
     ) {
         mutex.withLock {
             val payload = JSONObject().apply {
@@ -179,6 +206,7 @@ class ChatSocketClient @Inject constructor(
                 if (isEncrypted) {
                     put("isEncrypted", true)
                     if (ephemeralKey != null) put("ephemeralKey", ephemeralKey)
+                    if (senderPlaintext != null) put("senderPlaintext", senderPlaintext)
                 }
             }
             socket?.emit("message:send", payload)
@@ -217,6 +245,8 @@ class ChatSocketClient @Inject constructor(
     fun observeReadEvents(): Flow<SocketReadEvent> = readEvents.asSharedFlow()
     fun observeStatusUpdates(): Flow<SocketStatusUpdateEvent> = statusUpdateEvents.asSharedFlow()
     fun observeTypingEvents(): Flow<SocketTypingEvent> = typingEvents.asSharedFlow()
+    fun observeMemberAdded(): Flow<GroupMemberEvent> = memberAddedEvents.asSharedFlow()
+    fun observeMemberRemoved(): Flow<GroupMemberEvent> = memberRemovedEvents.asSharedFlow()
     fun observeConnection(): StateFlow<Boolean> = connectionState
 
     private fun parseIncomingMessage(payload: Any): ApiMessage? {

@@ -1,6 +1,8 @@
 import { StatusCodes } from 'http-status-codes';
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { getIO } from '../socket/socket.js';
+import { deleteMemberSenderKeys } from '../keys/sender-keys.service.js';
 
 export async function createOrGetDirectConversation(currentUserId: string, otherUserId: string) {
   if (currentUserId === otherUserId) {
@@ -131,7 +133,7 @@ export async function addGroupMembers(conversationId: string, adminId: string, m
     select: { id: true, displayName: true }
   });
 
-  return prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     const result = await tx.conversationMember.createMany({
       data: memberIds.map(userId => ({
         conversationId,
@@ -156,6 +158,16 @@ export async function addGroupMembers(conversationId: string, adminId: string, m
 
     return result;
   });
+
+  // Emit member-added events so existing members distribute SenderKeys to the new members
+  const io = getIO();
+  if (io) {
+    for (const userId of memberIds) {
+      io.to(conversationId).emit('group:member-added', { conversationId, userId });
+    }
+  }
+
+  return txResult;
 }
 
 export async function removeGroupMember(conversationId: string, requesterId: string, userIdToRemove: string) {
@@ -175,7 +187,7 @@ export async function removeGroupMember(conversationId: string, requesterId: str
   const userToRemove = await prisma.user.findUnique({ where: { id: userIdToRemove } });
 
   // Use a transaction to ensure member removal and system message creation happen together
-  return prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     const deleted = await tx.conversationMember.delete({
       where: { conversationId_userId: { conversationId, userId: userIdToRemove } }
     });
@@ -194,6 +206,17 @@ export async function removeGroupMember(conversationId: string, requesterId: str
 
     return deleted;
   });
+
+  // Clean up SenderKey distribution blobs for the removed member
+  await deleteMemberSenderKeys(conversationId, userIdToRemove);
+
+  // Emit member-removed event so remaining members rotate their SenderKeys immediately
+  const io = getIO();
+  if (io) {
+    io.to(conversationId).emit('group:member-removed', { conversationId, userId: userIdToRemove });
+  }
+
+  return txResult;
 }
 
 export async function updateGroupMetadata(conversationId: string, adminId: string, data: { name?: string; description?: string; avatarUrl?: string }) {
